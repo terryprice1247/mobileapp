@@ -1,0 +1,517 @@
+{
+    "2026-07-08": {
+        "date": "2026-07-08",
+        "saved_at": "2026-07-08 09:00 PM",
+        "location": "Work",
+        "energy": "Normal",
+        "completed": 0,
+        "total": 5,
+        "finished_all": false,
+        "missed_tasks": [
+            "Coding Core Task",
+            "Spanish Review",
+            "Complete Workout",
+            "Networking / LinkedIn",
+            "Reading"
+        ],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            }
+        ],
+        "xp_earned": 0,
+        "xp_possible": 300,
+        "day_closed": true
+    },
+    "2026-07-09": {
+        "date": "2026-07-09",
+        "saved_at": "2026-07-09 08:54 PM",
+        "location": "Work",
+        "energy": "Normal",
+        "completed": 1,
+        "total": 5,
+        "finished_all": false,
+        "missed_tasks": [
+            "Spanish Review",
+            "Complete Workout",
+            "Networking / LinkedIn",
+            "Reading"
+        ],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 40
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            }
+        ],
+        "xp_earned": 40,
+        "xp_possible": 300,
+        "day_closed": false
+    },
+    "2026-07-10": {
+        "date": "2026-07-10",
+        "saved_at": "2026-07-10 10:49 PM",
+        "location": "Work",
+        "energy": "Normal",
+        "completed": 1,
+        "total": 5,
+        "finished_all": false,
+        "missed_tasks": [
+            "Coding Core Task",
+            "Spanish Review",
+            "Networking / LinkedIn",
+            "Reading"
+        ],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 40
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            }
+        ],
+        "xp_earned": 40,
+        "xp_possible": 300,
+        "day_closed": false
+    },
+    "2026-07-14": {
+        "date": "2026-07-14",
+        "saved_at": "2026-07-14 09:38 PM",
+        "location": "Work",
+        "energy": "Normal",
+        "completed": 1,
+        "total": 5,
+        "finished_all": false,
+        "missed_tasks": [
+            "Spanish Review",
+            "Complete Workout",
+            "Networking / LinkedIn",
+            "Reading"
+        ],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 40
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            }
+        ],
+        "xp_earned": 40,
+        "xp_possible": 300,
+        "day_closed": false
+    },
+    "2026-07-15": {
+        "date": "2026-07-15",
+        "saved_at": "2026-07-15 10:25 PM",
+        "location": "Work",
+        "energy": "Normal",
+        "completed": 4,
+        "total": 5,
+        "finished_all": false,
+        "missed_tasks": [
+            "Reading"
+        ],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": true,
+                "duration_minutes": 30,
+                "xp": 60
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 30
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 40
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": true,
+                "duration_minutes": 10,
+                "xp": 15
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            }
+        ],
+        "xp_earned": 145,
+        "xp_possible": 300,
+        "day_closed": false
+    },
+    "2026-07-17": {
+        "date": "2026-07-17",
+        "saved_at": "2026-07-17 11:22 PM",
+        "location": "Work",
+        "energy": "Normal",
+        "completed": 5,
+        "total": 5,
+        "finished_all": true,
+        "missed_tasks": [],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": true,
+                "duration_minutes": 40,
+                "xp": 80
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 30
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 40
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": true,
+                "duration_minutes": 10,
+                "xp": 15
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 20
+            }
+        ],
+        "xp_earned": 185,
+        "xp_possible": 300,
+        "day_closed": true
+    },
+    "2026-07-19": {
+        "date": "2026-07-19",
+        "saved_at": "2026-07-19 09:53 PM",
+        "location": "Work",
+        "energy": "Normal",
+        "completed": 1,
+        "total": 5,
+        "finished_all": false,
+        "missed_tasks": [
+            "Spanish Review",
+            "Complete Workout",
+            "Networking / LinkedIn",
+            "Reading"
+        ],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 40
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            }
+        ],
+        "xp_earned": 40,
+        "xp_possible": 300,
+        "day_closed": false
+    },
+    "2026-07-22": {
+        "date": "2026-07-22",
+        "saved_at": "2026-07-22 10:01 PM",
+        "location": "Work",
+        "energy": "Normal",
+        "completed": 5,
+        "total": 5,
+        "finished_all": true,
+        "missed_tasks": [],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": true,
+                "duration_minutes": 40,
+                "xp": 80
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": true,
+                "duration_minutes": 40,
+                "xp": 60
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": true,
+                "duration_minutes": 40,
+                "xp": 80
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": true,
+                "duration_minutes": 30,
+                "xp": 50
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": true,
+                "duration_minutes": 30,
+                "xp": 30
+            }
+        ],
+        "xp_earned": 300,
+        "xp_possible": 300,
+        "day_closed": true,
+        "bonus_upgrades": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "tier": "mastery",
+                "duration_minutes": 40
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "tier": "mastery",
+                "duration_minutes": 40
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "tier": "mastery",
+                "duration_minutes": 40
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "tier": "mastery",
+                "duration_minutes": 30
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "tier": "mastery",
+                "duration_minutes": 30
+            }
+        ]
+    },
+    "2026-07-21": {
+        "date": "2026-07-21",
+        "saved_at": "2026-07-22 09:26 PM",
+        "location": "Away",
+        "energy": "Normal",
+        "completed": 2,
+        "total": 5,
+        "finished_all": false,
+        "missed_tasks": [
+            "Spanish Review",
+            "Networking / LinkedIn",
+            "Reading"
+        ],
+        "tasks": [
+            {
+                "text": "Coding Core Task",
+                "display": "Coding",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 40
+            },
+            {
+                "text": "Spanish Review",
+                "display": "Spanish",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Complete Workout",
+                "display": "Exercise",
+                "done": true,
+                "duration_minutes": 20,
+                "xp": 40
+            },
+            {
+                "text": "Networking / LinkedIn",
+                "display": "Networking",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            },
+            {
+                "text": "Reading",
+                "display": "Reading",
+                "done": false,
+                "duration_minutes": 0,
+                "xp": 0
+            }
+        ],
+        "xp_earned": 80,
+        "xp_possible": 300,
+        "day_closed": false,
+        "backfilled": true
+    }
+}

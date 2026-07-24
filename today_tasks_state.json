@@ -1,0 +1,74 @@
+{
+    "date": "2026-07-22",
+    "updated_at": "2026-07-22 10:08 PM",
+    "energy": "Normal",
+    "location": "Work",
+    "durations": {
+        "Coding Core Task": 40,
+        "Spanish Review": 40,
+        "Complete Workout": 40,
+        "Networking / LinkedIn": 30,
+        "Reading": 30
+    },
+    "collapsed_tasks": [
+        "Networking / LinkedIn",
+        "Spanish Review",
+        "Complete Workout",
+        "Coding Core Task",
+        "Reading"
+    ],
+    "workout": {
+        "Jump Rope": {
+            "done": false,
+            "set1": 0,
+            "set2": 0
+        },
+        "Pull-ups": {
+            "done": false,
+            "set1": 0,
+            "set2": 0
+        },
+        "Chin-ups": {
+            "done": false,
+            "set1": 0,
+            "set2": 0
+        },
+        "Squats": {
+            "done": false,
+            "set1": 0,
+            "set2": 0
+        },
+        "Leg Raises": {
+            "done": false,
+            "set1": 0,
+            "set2": 0
+        }
+    },
+    "day_closed": true,
+    "chat_log": [
+        {
+            "who": "Companion",
+            "msg": "Welcome back. Last session ended at 2/5. Spanish was left open. All available tiers are complete. Nothing else is required today.",
+            "time": "10:08 PM"
+        }
+    ],
+    "quote_history": {
+        "finished": [
+            "It's not about never feeling fear or fatigue. It's about never giving them enough time to vote.",
+            "The fight is rarely won by the strongest. Usually it is won by the one who remains.",
+            "The hardest part of the mission is often the five minutes before it begins."
+        ]
+    },
+    "last_quote": {
+        "text": "The hardest part of the mission is often the five minutes before it begins.",
+        "category": "finished",
+        "shown_at": "2026-07-22T21:43:36",
+        "recalled": false
+    },
+    "bonus_round_announced": true,
+    "last_closeout": {
+        "status": "BONUS COMPLETE",
+        "closed_at": "2026-07-22T22:01:09",
+        "tomorrow_focus": "Reading"
+    }
+}
