@@ -1,4 +1,4 @@
-﻿import json
+import json
 import re
 import random
 import html
@@ -165,21 +165,21 @@ st.markdown("""
   --line:#24324c; --gold:#ffd84d; --red:#ff4d57; --green:#62f0b2;
 }
 .stApp{background:var(--bg); color:var(--text);}
-.block-container{padding: .75rem 1rem 5rem 1rem; max-width: 480px;}
+.block-container{padding:.55rem .85rem 4.25rem .85rem; max-width:480px;}
 [data-testid="stHeader"]{background:rgba(0,0,0,0);}
-.hero{border:1px solid var(--purple); border-radius:20px; padding:16px 16px 14px 16px; background:linear-gradient(180deg,#11182a,#05070d); box-shadow:0 0 20px rgba(139,77,255,.20); margin-bottom:12px;}
-.logoRow{display:flex; align-items:center; gap:12px;}
-.logo{width:48px; height:48px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:#170b2f; color:var(--purple); font-size:32px; font-weight:900;}
-.title{font-size:1.25rem; font-weight:900; letter-spacing:.5px; line-height:1.1;}
-.sub{color:var(--muted); margin-top:4px; font-size:.9rem;}
-.modePill{display:inline-block; margin-top:12px; padding:7px 10px; border-radius:999px; color:#fff; background:rgba(139,77,255,.18); border:1px solid rgba(139,77,255,.55); font-size:.8rem; font-weight:800;}
-.card{border:1px solid var(--line); border-radius:16px; padding:14px; background:var(--card); margin:10px 0;}
-.companion{border:1px solid rgba(139,77,255,.40); border-radius:18px; padding:16px; background:linear-gradient(180deg,#0e1727,#070b13); margin:12px 0;}
+.hero{border:1px solid var(--purple); border-radius:18px; padding:12px 14px; background:linear-gradient(180deg,#11182a,#05070d); box-shadow:0 0 18px rgba(139,77,255,.18); margin-bottom:9px;}
+.logoRow{display:flex; align-items:center; gap:10px;}
+.logo{width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; background:#170b2f; color:var(--purple); font-size:28px; font-weight:900;}
+.title{font-size:1.16rem; font-weight:900; letter-spacing:.5px; line-height:1.05;}
+.sub{color:var(--muted); margin-top:3px; font-size:.82rem;}
+.modePill{display:none!important;}
+.card{border:1px solid var(--line); border-radius:16px; padding:13px; background:var(--card); margin:8px 0;}
+.companion{border:1px solid rgba(139,77,255,.40); border-radius:18px; padding:14px; background:linear-gradient(180deg,#0e1727,#070b13); margin:9px 0;}
 .label{color:var(--purple2); font-size:.78rem; font-weight:900; text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px;}
 .big{font-size:1.45rem; font-weight:900;}
 .muted{color:var(--muted);}
-.statGrid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:12px 0;}
-.stat{border:1px solid var(--line); background:#07101f; border-radius:14px; padding:10px; text-align:center;}
+.statGrid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin:9px 0;}
+.stat{border:1px solid var(--line); background:#07101f; border-radius:14px; padding:8px; text-align:center;}
 .stat .n{font-size:1.62rem; font-weight:900; color:var(--gold); line-height:1.05;}
 .stat .t{font-size:.72rem; color:var(--muted); font-weight:800;}
 .progressWrap{margin:2px 0 14px 0;}
@@ -188,8 +188,8 @@ st.markdown("""
 .focusCard{
   border:1px solid rgba(139,77,255,.72);
   border-radius:16px;
-  padding:13px 14px;
-  margin:12px 0 14px 0;
+  padding:12px 13px;
+  margin:9px 0 10px 0;
   background:radial-gradient(circle at top right, rgba(139,77,255,.24), transparent 38%), linear-gradient(180deg,#0d1526,#070b13);
   box-shadow:0 0 16px rgba(139,77,255,.12);
   position:relative;
@@ -328,15 +328,15 @@ st.markdown("""
 .stTextInput>div>div>input:focus::placeholder{color:transparent!important;}
 .stTextInput>div>div>input:focus{box-shadow:0 0 0 2px rgba(139,77,255,.25)!important;}
 .homeShell{border:1px solid rgba(139,77,255,.48); border-radius:18px; padding:12px; background:linear-gradient(180deg,#080d18,#05070d); margin-top:14px; box-shadow:0 0 18px rgba(139,77,255,.10);}
-.chatBox{max-height:455px; overflow-y:auto; padding:14px 16px; margin:0 0 10px 0; border:1px solid rgba(139,77,255,.65); border-radius:16px; background:#070b13; box-shadow:0 0 14px rgba(139,77,255,.10);}
-.chatMsg{display:block; padding:0; margin:0 0 10px 0; border:0!important; background:transparent!important;}
+.chatBox{max-height:455px; overflow-y:auto; padding:12px 14px; margin:0 0 8px 0; border:1px solid rgba(139,77,255,.65); border-radius:16px; background:#070b13; box-shadow:0 0 14px rgba(139,77,255,.10);}
+.chatMsg{display:block; padding:0; margin:0 0 8px 0; border:0!important; background:transparent!important;}
 .chatMsg:last-child{margin-bottom:0;}
 .chatMsg.you{border:0!important; background:transparent!important;}
 .chatMsg.companion{border:0!important; background:transparent!important;}
 .chatWho{display:inline; font-weight:900; margin-right:7px; font-size:.9rem;}
 .chatMsg.you .chatWho{color:#9fc0ff;}
 .chatMsg.companion .chatWho{color:#b55cff;}
-.chatText{display:inline; color:#f1f6ff; line-height:1.45; font-size:.93rem;}
+.chatText{display:inline; color:#f1f6ff; line-height:1.5; font-size:1rem;}
 .companionQuoteCard{margin-top:12px; padding:15px 16px; border:1px solid rgba(139,77,255,.72); border-radius:15px; background:linear-gradient(180deg,#101326,#080b14); box-shadow:0 0 16px rgba(139,77,255,.13);}
 .companionQuoteHead{font-size:.72rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase; color:#b55cff; margin-bottom:8px;}
 .companionQuoteText{font-size:.95rem; line-height:1.5; color:#f4f1ff;}
@@ -1014,6 +1014,16 @@ div[role="dialog"] [data-testid="stCheckbox"] input{
   }
 }
 
+
+@media (max-width:480px){
+  .block-container{padding-top:.4rem!important;}
+  .hero{padding:10px 12px!important;margin-bottom:8px!important;}
+  .statGrid{margin:8px 0!important;}
+  .progressWrap{margin-bottom:10px!important;}
+  .focusCard{margin-top:8px!important;margin-bottom:9px!important;}
+  .taskCard{margin-top:12px!important;}
+  .chatText{font-size:1.01rem!important;}
+}
 
 /* ---------- PHASE 3: COMPACT TREND ALERTS ---------- */
 .trendSummary{
@@ -3327,7 +3337,6 @@ def render_header(state, animate_mission=False):
     st.markdown(f"""
     <div class="hero">
       <div class="logoRow"><div class="logo">M</div><div><div class="title">MOMENTUM</div><div class="sub">Your daily system. Your future self.</div></div></div>
-      <div class="modePill">{mode} • {urgency} priority</div>
     </div>
     """, unsafe_allow_html=True)
     ts = totals()
@@ -3363,7 +3372,7 @@ def render_header(state, animate_mission=False):
         focus_minutes = recommendation["minutes"]
         is_bonus = bool(recommendation.get("is_bonus"))
         focus_reward = recommendation.get("xp_gain", task_xp(focus["canonical"], focus_minutes))
-        focus_label = "Bonus Target" if is_bonus else "Next Move"
+        focus_label = "Bonus Target" if is_bonus else "Companion Target"
         focus_time = (
             f"{recommendation['current_minutes']}m → {focus_minutes}m"
             if is_bonus else f"{focus_minutes} minutes"
@@ -3444,7 +3453,7 @@ def render_header(state, animate_mission=False):
             st.markdown(
                 """
                 <div class='focusCard'>
-                  <div class='focusLabel'>Next Move</div>
+                  <div class='focusLabel'>Companion Target</div>
                   <div class='focusMain'>
                     <div>
                       <div class='focusTask'>✅ Core list complete</div>
