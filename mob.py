@@ -2,6 +2,10 @@ import json
 import re
 import random
 import html
+import os
+import hashlib
+import urllib.request
+import urllib.error
 from pathlib import Path
 from datetime import datetime, timedelta
 import streamlit as st
@@ -12,6 +16,20 @@ HISTORY_FILE = Path("momentum_history.json")
 TODAY_TASKS_FILE = Path("today_tasks_state.json")
 WORKOUT_PB_FILE = Path("workout_personal_bests.json")
 QUOTES_FILE = Path("momentum_quotes.json")
+
+# ElevenLabs secrets belong in Render Environment Variables or .streamlit/secrets.toml.
+# Never commit the API key to GitHub.
+def runtime_secret(name, fallback=""):
+    try:
+        return str(st.secrets.get(name, os.getenv(name, fallback))).strip()
+    except Exception:
+        return str(os.getenv(name, fallback)).strip()
+
+
+ELEVENLABS_API_KEY = runtime_secret("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = runtime_secret("ELEVENLABS_VOICE_ID")
+ELEVENLABS_MODEL_ID = runtime_secret("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+ELEVENLABS_OUTPUT_FORMAT = "mp3_44100_128"
 
 WORK_EXERCISES = [
     {"name": "Jump Rope", "unit": "m", "icon": "⟳"},
@@ -1088,6 +1106,205 @@ div[role="dialog"] [data-testid="stCheckbox"] input{
 """, unsafe_allow_html=True)
 
 
+
+# -----------------------------
+# PHASE 8 - COMPANION VOICE
+# -----------------------------
+VOICE_PERSONALITY = {
+    "tone": "calm, observant, confident, slightly warm",
+    "rules": [
+        "Keep spoken lines brief.",
+        "Never read the whole screen aloud.",
+        "Use Terrence's name sparingly.",
+        "Give direction without lecturing or shaming.",
+        "Speak only when voice adds emotion, direction, encouragement, or closure.",
+    ],
+}
+
+
+def elevenlabs_ready():
+    return bool(ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID)
+
+
+def spoken_companion_line(event, **context):
+    """Create the short line ElevenLabs speaks while the screen keeps full detail."""
+    task = str(context.get("task") or "the next move")
+    minutes = int(context.get("minutes", 0) or 0)
+    quote = str(context.get("quote") or "").strip()
+    status = str(context.get("status") or "").strip()
+    remaining = int(context.get("remaining", 0) or 0)
+
+    if event == "opening":
+        mode = str(context.get("mode") or "Steady Build")
+        if task and minutes:
+            return f"Welcome back, Terrence. {task} is the priority. Give me {minutes} focused minutes."
+        return f"Welcome back, Terrence. {mode} mode is active. Let's protect the next move."
+
+    if event == "target":
+        if minutes:
+            return f"{task} is the Companion Target. Let's protect {minutes} minutes."
+        return f"{task} is next."
+
+    if event == "task_logged":
+        next_task = str(context.get("next_task") or "").strip()
+        if next_task:
+            return f"{task} is handled. {next_task} is next."
+        return f"{task} is handled. Keep moving."
+
+    if event == "quote":
+        return f"You asked for a push. Take this with you. {quote}" if quote else "You asked for a push. Take this with you."
+
+    if event == "early_quit":
+        return quote or "The day is not finished yet. One small loop can still protect it."
+
+    if event == "minimums_complete":
+        return "Every promise is protected. Bonus Round is now available."
+
+    if event == "bonus_target":
+        return f"Bonus target: {task}. Add {minutes} more minutes while the momentum is warm."
+
+    if event == "bonus_complete":
+        return "Every available upgrade is complete. There's nothing left to prove tonight. Go enjoy your evening."
+
+    if event == "end_day":
+        if status:
+            return f"{status}. The day is sealed. We'll continue from here tomorrow."
+        return "The day is sealed. We'll continue from here tomorrow."
+
+    if event == "remaining":
+        return f"{remaining} promises are still open. We only need the next one."
+
+    return str(context.get("fallback") or "Keep moving.").strip()
+
+
+@st.cache_data(show_spinner=False, ttl=60 * 60 * 24, max_entries=80)
+def generate_elevenlabs_audio(text, api_key, voice_id, model_id):
+    """Generate MP3 bytes through ElevenLabs' REST API and cache repeated lines."""
+    clean = " ".join(str(text or "").split()).strip()
+    if not clean:
+        return b""
+
+    endpoint = (
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        f"?output_format={ELEVENLABS_OUTPUT_FORMAT}"
+    )
+    payload = json.dumps({
+        "text": clean,
+        "model_id": model_id or "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.58,
+            "similarity_boost": 0.78,
+            "style": 0.18,
+            "use_speaker_boost": True,
+        },
+    }).encode("utf-8")
+
+    request = urllib.request.Request(
+        endpoint,
+        data=payload,
+        method="POST",
+        headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")[:300]
+        raise RuntimeError(f"ElevenLabs returned HTTP {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Could not reach ElevenLabs: {exc.reason}") from exc
+
+
+def queue_companion_voice(state, text, event_key, autoplay=True, force=False):
+    """Queue one meaningful spoken line and prevent duplicate Streamlit reruns."""
+    clean = " ".join(str(text or "").split()).strip()
+    if not clean or not state.get("voice_enabled", True) or not elevenlabs_ready():
+        return
+
+    fingerprint = hashlib.sha1(f"{event_key}|{clean}".encode("utf-8")).hexdigest()
+    spoken = st.session_state.setdefault("spoken_voice_events", set())
+    if not isinstance(spoken, set):
+        spoken = set(spoken or [])
+        st.session_state["spoken_voice_events"] = spoken
+    if fingerprint in spoken and not force:
+        return
+
+    spoken.add(fingerprint)
+    st.session_state["pending_companion_voice"] = {
+        "text": clean,
+        "event_key": event_key,
+        "autoplay": bool(autoplay and state.get("voice_auto", True)),
+    }
+    state["last_spoken_text"] = clean
+    save_state(state)
+
+
+def render_pending_companion_voice(state):
+    pending = st.session_state.pop("pending_companion_voice", None)
+    if not pending or not state.get("voice_enabled", True):
+        return
+    try:
+        audio = generate_elevenlabs_audio(
+            pending["text"],
+            ELEVENLABS_API_KEY,
+            ELEVENLABS_VOICE_ID,
+            ELEVENLABS_MODEL_ID,
+        )
+        if audio:
+            try:
+                st.audio(audio, format="audio/mpeg", autoplay=bool(pending.get("autoplay")))
+            except TypeError:
+                # Compatibility fallback for older Streamlit releases.
+                st.audio(audio, format="audio/mpeg")
+    except Exception as exc:
+        st.caption(f"Voice unavailable: {exc}")
+
+
+def render_voice_controls(state):
+    st.markdown("<div class='card'><div class='label'>Companion Voice</div>", unsafe_allow_html=True)
+    if not elevenlabs_ready():
+        st.warning(
+            "Voice is coded but not connected yet. Add ELEVENLABS_API_KEY and "
+            "ELEVENLABS_VOICE_ID in Render Environment Variables."
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    enabled = st.toggle("Voice enabled", value=bool(state.get("voice_enabled", True)), key="voice_enabled_toggle")
+    auto = st.toggle(
+        "Automatically speak major moments",
+        value=bool(state.get("voice_auto", True)),
+        key="voice_auto_toggle",
+        disabled=not enabled,
+    )
+    if enabled != state.get("voice_enabled") or auto != state.get("voice_auto"):
+        state["voice_enabled"] = enabled
+        state["voice_auto"] = auto
+        save_state(state)
+
+    c1, c2 = st.columns(2)
+    if c1.button("▶ Test voice", use_container_width=True, disabled=not enabled):
+        line = "Voice online. Calm, focused, and ready when you are."
+        queue_companion_voice(state, line, "voice_test", autoplay=True, force=True)
+        st.rerun()
+    if c2.button("↻ Replay last", use_container_width=True, disabled=not enabled or not state.get("last_spoken_text")):
+        queue_companion_voice(
+            state,
+            state.get("last_spoken_text", ""),
+            "voice_replay",
+            autoplay=True,
+            force=True,
+        )
+        st.rerun()
+
+    st.caption("Automatic voice is reserved for openings, quotes, major completions, and day closeout.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def load_json(path, fallback):
     if not path.exists():
         return fallback
@@ -1165,6 +1382,9 @@ def default_state():
         },
         "day_closed": False,
         "bonus_round_announced": False,
+        "voice_enabled": True,
+        "voice_auto": True,
+        "last_spoken_text": "",
         "chat_log": [],
     }
 
@@ -1178,6 +1398,9 @@ def load_state():
     state.setdefault("chat_log", [])
     state.setdefault("collapsed_tasks", [])
     state.setdefault("workout", {})
+    state.setdefault("voice_enabled", True)
+    state.setdefault("voice_auto", True)
+    state.setdefault("last_spoken_text", "")
     if not isinstance(state.get("collapsed_tasks"), list):
         state["collapsed_tasks"] = []
     if not isinstance(state.get("workout"), dict):
@@ -3290,6 +3513,32 @@ def quick_log_mission(state, recommendation, minutes):
         f"✓ {saved_task['display'] if saved_task else display_task_name(canonical)} "
         f"{action_word} • +{gained} XP"
     )
+
+    next_rec = refreshed_core.next_move()
+    if not minimums_were_complete and all_energy_minimums_met(state):
+        spoken = spoken_companion_line("minimums_complete")
+        event_key = f"minimums_complete_{today_key()}"
+    elif next_rec and next_rec.get("is_bonus"):
+        spoken = spoken_companion_line(
+            "bonus_target",
+            task=next_rec["task"]["display"],
+            minutes=next_rec.get("extra_minutes", 0),
+        )
+        event_key = f"bonus_target_{today_key()}_{next_rec['canonical']}_{next_rec['minutes']}"
+    elif next_rec:
+        spoken = spoken_companion_line(
+            "task_logged",
+            task=saved_task["display"] if saved_task else display_task_name(canonical),
+            next_task=next_rec["task"]["display"],
+        )
+        event_key = f"task_logged_{today_key()}_{canonical}_{minutes}"
+    else:
+        spoken = spoken_companion_line(
+            "task_logged",
+            task=saved_task["display"] if saved_task else display_task_name(canonical),
+        )
+        event_key = f"task_logged_{today_key()}_{canonical}_{minutes}"
+    queue_companion_voice(state, spoken, event_key, autoplay=True)
     st.rerun()
 
 
@@ -3448,7 +3697,12 @@ def render_header(state, animate_mission=False):
                     "Every promise was protected. Every available upgrade was earned. "
                     "There's nothing left to prove tonight. See you tomorrow.",
                 )
+                queue_companion_voice(
+                    state, spoken_companion_line("bonus_complete"),
+                    f"bonus_complete_{today_key()}", autoplay=True
+                )
                 st.success("🌙 See you tomorrow.")
+                st.rerun()
         else:
             st.markdown(
                 """
@@ -3480,6 +3734,18 @@ def ensure_opening_chat(state):
             "time": datetime.now().strftime("%I:%M %p"),
         }]
         save_state(state)
+
+    # Speak the opening once per browser session/day. Browser autoplay rules may
+    # require the first tap; Replay Last remains available in Companion settings.
+    core = get_companion_core(state)
+    rec = core.next_move()
+    if rec:
+        opening_line = spoken_companion_line(
+            "opening", mode=core.mode, task=rec["task"]["display"], minutes=rec["minutes"]
+        )
+    else:
+        opening_line = spoken_companion_line("opening", mode=core.mode)
+    queue_companion_voice(state, opening_line, f"opening_{today_key()}", autoplay=True)
 
 
 def clear_chat(state):
@@ -3637,6 +3903,35 @@ def render_home(state):
         add_chat(state, "You", user_msg)
         reply = handle_command(user_msg, state)
         add_chat(state, "Companion", reply)
+
+        low = user_msg.lower()
+        if any(x in low for x in ["quote", "motivate", "inspire", "wake me up", "get me going", "don't feel", "dont feel"]):
+            quote_text = reply.split("\n\n", 1)[-1]
+            queue_companion_voice(
+                state, spoken_companion_line("quote", quote=quote_text),
+                f"quote_{hashlib.sha1(reply.encode('utf-8')).hexdigest()}", autoplay=True
+            )
+        elif "end day" in low or "close day" in low:
+            if completed_count(state) < len(DAILY_TASKS):
+                queue_companion_voice(
+                    state, spoken_companion_line("early_quit", quote=reply),
+                    f"early_quit_{today_key()}_{completed_count(state)}", autoplay=True
+                )
+            else:
+                queue_companion_voice(
+                    state, spoken_companion_line("end_day", status="Mission complete"),
+                    f"end_day_{today_key()}", autoplay=True
+                )
+        elif re.search(r"\b(next|goal|goals)\b", low) or "what now" in low:
+            rec = get_companion_core(state).next_move()
+            if rec:
+                queue_companion_voice(
+                    state,
+                    spoken_companion_line("target", task=rec["task"]["display"], minutes=rec["minutes"]),
+                    f"target_{today_key()}_{rec['canonical']}_{rec['minutes']}",
+                    autoplay=False,
+                )
+
         st.session_state["animate_last_reply"] = True
         st.rerun()
 
@@ -4006,6 +4301,7 @@ def render_stats(state):
 
 
 def render_help(state):
+    render_voice_controls(state)
     st.markdown("""
     <div class="card">
       <div class="label">Companion Guide</div>
@@ -4286,8 +4582,13 @@ def render_end_day(state):
             f"{review['xp']} XP. Tomorrow begins with {review['tomorrow_task']}."
         )
         add_chat(state, "Companion", final_message)
+        queue_companion_voice(
+            state, spoken_companion_line("end_day", status=review["status"].title()),
+            f"closeout_{today_key()}_{review['status']}", autoplay=True
+        )
         st.success("Today is sealed. Tomorrow is ready.")
         render_companion_quote_card(quote)
+        st.rerun()
 
 
 
