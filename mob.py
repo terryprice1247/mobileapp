@@ -1244,9 +1244,11 @@ def queue_companion_voice(state, text, event_key, autoplay=True, force=False):
 
 
 def render_pending_companion_voice(state):
+    """Play queued ElevenLabs audio invisibly, with no visible audio player."""
     pending = st.session_state.pop("pending_companion_voice", None)
     if not pending or not state.get("voice_enabled", True):
         return
+
     try:
         audio = generate_elevenlabs_audio(
             pending["text"],
@@ -1254,14 +1256,54 @@ def render_pending_companion_voice(state):
             ELEVENLABS_VOICE_ID,
             ELEVENLABS_MODEL_ID,
         )
-        if audio:
-            try:
-                st.audio(audio, format="audio/mpeg", autoplay=bool(pending.get("autoplay")))
-            except TypeError:
-                # Compatibility fallback for older Streamlit releases.
-                st.audio(audio, format="audio/mpeg")
+        if not audio:
+            return
+
+        import base64
+        encoded = base64.b64encode(audio).decode("ascii")
+        autoplay = "true" if bool(pending.get("autoplay")) else "false"
+
+        components.html(
+            f"""
+            <audio id="momentum-companion-voice"
+                   src="data:audio/mpeg;base64,{encoded}"
+                   preload="auto"
+                   style="display:none"></audio>
+            <script>
+            (() => {{
+              const audio = document.getElementById("momentum-companion-voice");
+              if (!audio) return;
+
+              const shouldAutoplay = {autoplay};
+
+              const playNow = () => {{
+                audio.play().catch(() => {{
+                  // iOS/Safari may require a real user gesture first.
+                  const parentDoc = window.parent.document;
+                  const unlock = () => {{
+                    audio.play().catch(() => {{}});
+                    parentDoc.removeEventListener("click", unlock, true);
+                    parentDoc.removeEventListener("touchstart", unlock, true);
+                  }};
+                  parentDoc.addEventListener("click", unlock, true);
+                  parentDoc.addEventListener("touchstart", unlock, true);
+                }});
+              }};
+
+              if (shouldAutoplay) {{
+                setTimeout(playNow, 80);
+              }} else {{
+                // For tap-to-play events, the Streamlit button click just occurred.
+                setTimeout(playNow, 80);
+              }}
+            }})();
+            </script>
+            """,
+            height=0,
+        )
     except Exception as exc:
-        st.caption(f"Voice unavailable: {exc}")
+        # Keep failures quiet in normal use, but store the latest error for diagnostics.
+        st.session_state["last_voice_error"] = str(exc)
 
 
 def render_voice_controls(state):
@@ -4650,6 +4692,10 @@ elif tab == "End day":
 else:
     render_help(state)
 
+
+# Render any ElevenLabs audio queued during the previous interaction.
+# Without this call, voice events are created but never turned into an audio player.
+render_pending_companion_voice(state)
 
 # Track page transitions so the mission shine runs once when Home is entered.
 st.session_state["_last_rendered_page"] = tab
