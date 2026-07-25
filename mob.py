@@ -6,16 +6,49 @@ import os
 import hashlib
 import urllib.request
 import urllib.error
+import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
 
 DAY_ROLLOVER_HOUR = 2
-HISTORY_FILE = Path("momentum_history.json")
-TODAY_TASKS_FILE = Path("today_tasks_state.json")
-WORKOUT_PB_FILE = Path("workout_personal_bests.json")
-QUOTES_FILE = Path("momentum_quotes.json")
+
+# Persistent storage ---------------------------------------------------------
+# On Render, attach a disk at /var/data. Locally, the app falls back to a
+# project-side data folder so the same code still runs from Visual Studio.
+APP_DIR = Path(__file__).resolve().parent
+RENDER_DISK_DIR = Path(os.getenv("MOMENTUM_DATA_DIR", "/var/data"))
+DATA_DIR = RENDER_DISK_DIR if RENDER_DISK_DIR.exists() else APP_DIR / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def seed_persistent_file(filename, fallback):
+    """Copy starter JSON into persistent storage the first time only."""
+    destination = DATA_DIR / filename
+    if destination.exists():
+        return destination
+
+    source = APP_DIR / filename
+    try:
+        if source.exists():
+            shutil.copy2(source, destination)
+        else:
+            destination.write_text(json.dumps(fallback, indent=4), encoding="utf-8")
+    except OSError:
+        # Last-resort local fallback if the configured directory is unavailable.
+        destination = APP_DIR / filename
+        if not destination.exists():
+            destination.write_text(json.dumps(fallback, indent=4), encoding="utf-8")
+    return destination
+
+
+HISTORY_FILE = seed_persistent_file("momentum_history.json", {})
+TODAY_TASKS_FILE = seed_persistent_file("today_tasks_state.json", {})
+WORKOUT_PB_FILE = seed_persistent_file("workout_personal_bests.json", {})
+
+# Quotes are app content, not changing user progress, so they stay in GitHub.
+QUOTES_FILE = APP_DIR / "momentum_quotes.json"
 
 # ElevenLabs secrets belong in Render Environment Variables or .streamlit/secrets.toml.
 # Never commit the API key to GitHub.
