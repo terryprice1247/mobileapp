@@ -159,34 +159,157 @@ def format_quote(entry):
     return str(entry.get("text", "")).strip() or "Keep moving."
 
 
-def quote_intro(command_text):
-    """Give resistance and inspiration requests a natural Companion lead-in."""
-    low = (command_text or "").lower()
+def choose_fresh_line(state, key, choices):
+    """Choose variety without immediately repeating the previous line."""
+    options = [str(choice).strip() for choice in choices if str(choice).strip()]
+    if not options:
+        return ""
 
-    if "wake me up" in low:
-        return "You asked for a push. Take this with you."
+    state.setdefault("companion_variety", {})
+    previous = state["companion_variety"].get(key)
+    fresh = [choice for choice in options if choice != previous] or options
+    selected = random.choice(fresh)
+    state["companion_variety"][key] = selected
+    return selected
 
-    if any(phrase in low for phrase in [
-        "i'm not feeling it", "im not feeling it",
-        "i am not feeling it", "not feeling it",
-        "i don't wanna", "i dont wanna",
-        "i don't want to", "i dont want to",
-    ]):
-        return "I hear you. We are not chasing a perfect session—just one honest start."
+
+def resistance_kind(command_text):
+    """Classify the user's wording so the Companion can answer naturally."""
+    low = str(command_text or "").lower()
 
     if any(phrase in low for phrase in [
         "i just want to relax", "just want to relax",
         "i want to relax", "want to relax",
     ]):
-        return "You can relax. First, let's earn it with one small promise protected."
+        return "relax"
 
-    if "don't feel" in low or "dont feel" in low:
-        return "Then we keep the standard small and move anyway."
+    if any(phrase in low for phrase in [
+        "i'm not feeling it", "im not feeling it",
+        "i am not feeling it", "not feeling it",
+        "don't feel", "dont feel",
+    ]):
+        return "not_feeling_it"
 
-    if "get me going" in low or "motivate" in low or "inspire" in low:
-        return "Here's one I think you need tonight."
+    if any(phrase in low for phrase in [
+        "i don't wanna", "i dont wanna",
+        "i don't want to", "i dont want to",
+    ]):
+        return "dont_want_to"
 
-    return "Here's one worth carrying into the next move."
+    return "push"
+
+
+def quote_intro(command_text, state=None):
+    """Give resistance and inspiration requests a varied Companion lead-in."""
+    state = state if isinstance(state, dict) else {}
+    kind = resistance_kind(command_text)
+
+    pools = {
+        "not_feeling_it": [
+            "I hear you. We are not chasing a perfect session—just one honest start.",
+            "Then let's lower the bar, not abandon the promise.",
+            "The mission does not have to feel good to count.",
+            "Most protected days begin right here.",
+            "Don't decide yet. Read this first.",
+            "Stay with me for thirty more seconds.",
+        ],
+        "dont_want_to": [
+            "I believe you. Let's move before the feeling gets a vote.",
+            "You do not have to want it. Just protect one small piece.",
+            "Then we make the first step smaller.",
+            "One thought before you call it.",
+            "Let's borrow a little momentum.",
+            "No lecture. Just this.",
+        ],
+        "relax": [
+            "You can relax. First, let's protect one small promise.",
+            "Ten honest minutes can make the rest feel lighter.",
+            "Protect one promise. Then enjoy the evening.",
+            "Before you settle in, give yourself one clean win.",
+            "Let's earn the kind of rest that feels complete.",
+            "One small action, then the night is yours.",
+        ],
+        "push": [
+            "You asked for a push. Take this with you.",
+            "Let's borrow a little momentum.",
+            "Don't decide yet. Read this first.",
+            "Here's one I think you need tonight.",
+            "One thought before you call it.",
+            "Stay with me for thirty more seconds.",
+            "Read this.",
+        ],
+    }
+
+    return choose_fresh_line(state, f"quote_intro_{kind}", pools[kind])
+
+
+def is_direct_inspiration_request(command_text):
+    """Requests that clearly ask for a quote or motivation always receive one."""
+    low = str(command_text or "").lower()
+    return any(phrase in low for phrase in [
+        "quote", "motivate", "motivate me", "inspire", "inspire me",
+        "wake me up", "get me going",
+    ])
+
+
+def short_reengagement_response(command_text, state):
+    """A brief Companion response without using a quote."""
+    kind = resistance_kind(command_text)
+    pools = {
+        "not_feeling_it": [
+            "Then today is not about motivation. It is about keeping one promise.",
+            "You do not need a great session. Give me one honest start.",
+            "Let the feeling stay. Move anyway—small and clean.",
+            "We are not rescuing the whole day. Just the next ten minutes.",
+        ],
+        "dont_want_to": [
+            "I know. Make the first step too small to argue with.",
+            "Wanting to is optional. Beginning is enough.",
+            "No speech. Pick the smallest task and touch it.",
+            "One promise. Nothing heroic.",
+        ],
+        "relax": [
+            "You can rest. Protect one promise first, then let the day go.",
+            "Give me ten clean minutes. Then relax without negotiating with yourself.",
+            "One small win before comfort.",
+            "Finish a tiny loop, then the night is yours.",
+        ],
+        "push": [
+            "Momentum is not missing. It is waiting for the first move.",
+            "Do not solve the whole night. Begin one thing.",
+            "One honest start. That is enough.",
+            "Let's protect the next move.",
+        ],
+    }
+    return choose_fresh_line(state, f"short_reengagement_{kind}", pools[kind])
+
+
+def reengagement_challenge(command_text, state):
+    """Offer a small, non-shaming challenge instead of a quote."""
+    kind = resistance_kind(command_text)
+    pools = {
+        "not_feeling_it": [
+            "Give me five minutes. After that, you can decide again.",
+            "Start the easiest task for five minutes. No promise beyond that.",
+            "Open the task. Do one tiny piece. Then reassess.",
+        ],
+        "dont_want_to": [
+            "Give me one set, one page, or five minutes. Your choice.",
+            "Pick the smallest unfinished promise and touch it once.",
+            "Five minutes. No debate before the timer ends.",
+        ],
+        "relax": [
+            "Earn the landing: ten minutes, then shut it down clean.",
+            "One small loop before rest. Choose the easiest one.",
+            "Protect five minutes now, then enjoy the rest without guilt.",
+        ],
+        "push": [
+            "Give me five focused minutes. Then we reassess.",
+            "Choose one task and make the smallest possible start.",
+            "One move now. Motivation can catch up later.",
+        ],
+    }
+    return choose_fresh_line(state, f"reengagement_challenge_{kind}", pools[kind])
 
 
 def compact_quote_memory(text, limit=150):
@@ -1185,6 +1308,7 @@ def spoken_companion_line(event, **context):
     task = str(context.get("task") or "the next move")
     minutes = int(context.get("minutes", 0) or 0)
     quote = str(context.get("quote") or "").strip()
+    message = str(context.get("message") or "").strip()
     status = str(context.get("status") or "").strip()
     remaining = int(context.get("remaining", 0) or 0)
 
@@ -1206,7 +1330,10 @@ def spoken_companion_line(event, **context):
         return f"{task} is handled. Keep moving."
 
     if event == "quote":
-        return f"You asked for a push. Take this with you. {quote}" if quote else "You asked for a push. Take this with you."
+        return quote or "Let's protect the next move."
+
+    if event == "reengagement":
+        return message or quote or "One small promise. Nothing heroic."
 
     if event == "early_quit":
         return quote or "The day is not finished yet. One small loop can still protect it."
@@ -3051,7 +3178,23 @@ class CompanionCore:
         return categorized_quote(self.state, category)
 
     def inspiration_response(self, command_text):
-        return f"{quote_intro(command_text)}\n\n{self.quote('inspiration')}"
+        """Respond with controlled variety while staying inside Companion rules.
+
+        Direct requests for motivation always receive a quote.
+        Resistance phrases rotate between:
+        - 60% brief lead-in + quote
+        - 25% short Companion message
+        - 15% small re-engagement challenge
+        """
+        if is_direct_inspiration_request(command_text):
+            return f"{quote_intro(command_text, self.state)}\n\n{self.quote('inspiration')}"
+
+        roll = random.random()
+        if roll < 0.60:
+            return f"{quote_intro(command_text, self.state)}\n\n{self.quote('inspiration')}"
+        if roll < 0.85:
+            return short_reengagement_response(command_text, self.state)
+        return reengagement_challenge(command_text, self.state)
 
     def recalled_quote_line(self):
         """Let the Companion briefly reference its most recent inspiration once."""
@@ -4027,10 +4170,11 @@ def render_home(state):
 
         low = user_msg.lower()
         if is_reengagement_request(user_msg):
-            quote_text = reply.split("\n\n", 1)[-1]
             queue_companion_voice(
-                state, spoken_companion_line("quote", quote=quote_text),
-                f"quote_{hashlib.sha1(reply.encode('utf-8')).hexdigest()}", autoplay=True
+                state,
+                spoken_companion_line("reengagement", message=reply),
+                f"reengagement_{hashlib.sha1(reply.encode('utf-8')).hexdigest()}",
+                autoplay=True,
             )
         elif "end day" in low or "close day" in low:
             if completed_count(state) < len(DAILY_TASKS):
