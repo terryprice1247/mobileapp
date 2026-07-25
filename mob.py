@@ -9,10 +9,13 @@ import urllib.error
 import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import streamlit as st
 import streamlit.components.v1 as components
 
 DAY_ROLLOVER_HOUR = 2
+APP_TIMEZONE = ZoneInfo(os.getenv("MOMENTUM_TIMEZONE", "America/Detroit"))
+STATE_SCHEMA_VERSION = 2
 
 # Persistent storage ---------------------------------------------------------
 # On Render, attach a disk at /var/data. Locally, the app falls back to a
@@ -157,14 +160,32 @@ def format_quote(entry):
 
 
 def quote_intro(command_text):
-    """Give inspiration requests a small, natural lead-in."""
+    """Give resistance and inspiration requests a natural Companion lead-in."""
     low = (command_text or "").lower()
+
     if "wake me up" in low:
         return "You asked for a push. Take this with you."
+
+    if any(phrase in low for phrase in [
+        "i'm not feeling it", "im not feeling it",
+        "i am not feeling it", "not feeling it",
+        "i don't wanna", "i dont wanna",
+        "i don't want to", "i dont want to",
+    ]):
+        return "I hear you. We are not chasing a perfect session—just one honest start."
+
+    if any(phrase in low for phrase in [
+        "i just want to relax", "just want to relax",
+        "i want to relax", "want to relax",
+    ]):
+        return "You can relax. First, let's earn it with one small promise protected."
+
     if "don't feel" in low or "dont feel" in low:
         return "Then we keep the standard small and move anyway."
+
     if "get me going" in low or "motivate" in low or "inspire" in low:
         return "Here's one I think you need tonight."
+
     return "Here's one worth carrying into the next move."
 
 
@@ -1394,7 +1415,12 @@ def save_json(path, data):
 
 
 def momentum_now():
-    now = datetime.now()
+    """Return the current Momentum day using Detroit local time.
+
+    The daily board rolls over at 2:00 AM local time, regardless of the
+    timezone used by the Render server.
+    """
+    now = datetime.now(APP_TIMEZONE)
     if now.hour < DAY_ROLLOVER_HOUR:
         now -= timedelta(days=1)
     return now
@@ -1445,6 +1471,7 @@ def max_daily_xp():
 
 def default_state():
     return {
+        "state_schema_version": STATE_SCHEMA_VERSION,
         "date": today_key(),
         "updated_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
         "energy": "Normal",
@@ -1466,7 +1493,11 @@ def default_state():
 
 def load_state():
     state = load_json(TODAY_TASKS_FILE, None)
-    if not isinstance(state, dict) or state.get("date") != today_key():
+    if (
+        not isinstance(state, dict)
+        or state.get("state_schema_version") != STATE_SCHEMA_VERSION
+        or state.get("date") != today_key()
+    ):
         state = default_state()
         save_json(TODAY_TASKS_FILE, state)
     state.setdefault("durations", {})
@@ -3443,6 +3474,21 @@ def backfill_from_chat(text):
     )
 
 
+def is_reengagement_request(text):
+    """Detect natural resistance phrases that should trigger the Companion."""
+    low = str(text or "").lower().strip()
+    phrases = [
+        "quote", "motivate", "motivate me", "inspire", "inspire me",
+        "wake me up", "get me going", "don't feel", "dont feel",
+        "i'm not feeling it", "im not feeling it", "i am not feeling it",
+        "not feeling it", "i don't wanna", "i dont wanna",
+        "i don't want to", "i dont want to",
+        "i just want to relax", "just want to relax",
+        "i want to relax", "want to relax",
+    ]
+    return any(phrase in low for phrase in phrases)
+
+
 def handle_command(text, state):
     cleaned = (text or "").strip()
     if not cleaned:
@@ -3458,7 +3504,7 @@ def handle_command(text, state):
     if is_backfill_request(cleaned):
         return backfill_from_chat(cleaned)
 
-    if any(x in low for x in ["quote", "motivate", "inspire", "wake me up", "get me going", "don't feel", "dont feel"]):
+    if is_reengagement_request(cleaned):
         return core.inspiration_response(cleaned)
 
     if low in {"core", "companion core", "core state", "brain core"}:
@@ -3980,7 +4026,7 @@ def render_home(state):
         add_chat(state, "Companion", reply)
 
         low = user_msg.lower()
-        if any(x in low for x in ["quote", "motivate", "inspire", "wake me up", "get me going", "don't feel", "dont feel"]):
+        if is_reengagement_request(user_msg):
             quote_text = reply.split("\n\n", 1)[-1]
             queue_companion_voice(
                 state, spoken_companion_line("quote", quote=quote_text),
