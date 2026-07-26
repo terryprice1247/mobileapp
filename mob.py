@@ -3262,14 +3262,29 @@ class CompanionCore:
 
         if rec and rec.get("is_bonus") and not self.state.get("bonus_round_announced"):
             self.state["bonus_round_announced"] = True
+
+            completion_intro = choose_fresh_line(
+                self.state,
+                "finished_dailies_intro",
+                [
+                    "You finished what you promised. Everything from here is extra.",
+                    "The core work is protected. Bonus Round is yours if you want it.",
+                    "Every promise is covered. What comes next is optional growth.",
+                    "The list is complete. You have already earned the day.",
+                    "Minimums secured. Anything else belongs to future you.",
+                    "You kept the contract. The Bonus Round is simply extra credit.",
+                ],
+            )
+            finished_quote = self.quote("finished")
             save_state(self.state)
+
             return (
                 base
-                + "\n\nAll minimums are complete. Bonus Round unlocked."
+                + f"\n\n{completion_intro}"
                 + f"\nBonus target: {rec['task']['display']} "
                   f"{rec['current_minutes']}m → {rec['minutes']}m "
                   f"for +{rec['xp_gain']} XP."
-                + f"\n\n{self.quote('finished')}"
+                + f"\n\n{finished_quote}"
             )
 
         if not rec:
@@ -3617,6 +3632,50 @@ def backfill_from_chat(text):
     )
 
 
+def is_bonus_stop_request(text):
+    """Detect requests to stop once the required daily work is complete."""
+    low = str(text or "").lower().strip()
+    phrases = [
+        "can i stop", "can i be done", "am i done",
+        "i think i'm done", "i think im done", "i'm done", "im done",
+        "i dont want to", "i don't want to", "i dont wanna", "i don't wanna",
+        "can i relax", "i want to relax", "i just want to relax",
+        "i'm finished", "im finished", "i think that's enough",
+        "i think thats enough", "can i call it", "can i quit",
+    ]
+    return any(phrase in low for phrase in phrases)
+
+
+def bonus_round_permission_response(state):
+    """Affirm completed minimums without turning optional growth into guilt."""
+    direct_lines = [
+        "You can stop. Today's promises are already protected.",
+        "You do not owe the day another minute.",
+        "Yes. Everything from here is optional growth.",
+        "Then end the day with a clean conscience.",
+        "You already earned the day.",
+        "The contract is fulfilled. Bonus is bonus.",
+        "Rest is allowed. The important work is already done.",
+    ]
+
+    growth_lines = [
+        "If you continue, it is because you want to grow—not because you failed to do enough.",
+        "Anything more is growth, not repayment.",
+        "The Bonus Round is an opportunity, not a debt.",
+        "You can keep going, but nothing is missing from today.",
+        "More is available. More is not required.",
+    ]
+
+    # Make the signature line common enough that it will naturally be spoken.
+    if random.random() < 0.45:
+        growth = "If you continue, it is because you want to grow—not because you failed to do enough."
+    else:
+        growth = choose_fresh_line(state, "bonus_growth_permission", growth_lines)
+
+    direct = choose_fresh_line(state, "bonus_stop_permission", direct_lines)
+    return f"{direct}\n\n{growth}"
+
+
 def is_reengagement_request(text):
     """Detect natural resistance phrases that should trigger the Companion."""
     low = str(text or "").lower().strip()
@@ -3646,6 +3705,9 @@ def handle_command(text, state):
 
     if is_backfill_request(cleaned):
         return backfill_from_chat(cleaned)
+
+    if all_energy_minimums_met(state) and is_bonus_stop_request(cleaned):
+        return bonus_round_permission_response(state)
 
     if is_reengagement_request(cleaned):
         return core.inspiration_response(cleaned)
@@ -3780,7 +3842,20 @@ def quick_log_mission(state, recommendation, minutes):
 
     next_rec = refreshed_core.next_move()
     if not minimums_were_complete and all_energy_minimums_met(state):
-        spoken = spoken_companion_line("minimums_complete")
+        # The on-screen completion message ends with the finished-list quote.
+        finished_quote = message.rsplit("\n\n", 1)[-1].strip()
+        spoken_intro = choose_fresh_line(
+            state,
+            "spoken_finished_dailies_intro",
+            [
+                "You finished what you promised. Everything from here is extra.",
+                "Every promise is protected. The rest is optional.",
+                "The core list is complete. You have already earned the day.",
+                "You kept the contract. Bonus Round is now available.",
+                "Minimums secured. Anything else is a gift to future you.",
+            ],
+        )
+        spoken = f"{spoken_intro} {finished_quote}".strip()
         event_key = f"minimums_complete_{today_key()}"
     elif next_rec and next_rec.get("is_bonus"):
         spoken = spoken_companion_line(
@@ -4169,7 +4244,14 @@ def render_home(state):
         add_chat(state, "Companion", reply)
 
         low = user_msg.lower()
-        if is_reengagement_request(user_msg):
+        if all_energy_minimums_met(state) and is_bonus_stop_request(user_msg):
+            queue_companion_voice(
+                state,
+                spoken_companion_line("reengagement", message=reply),
+                f"bonus_permission_{hashlib.sha1(reply.encode('utf-8')).hexdigest()}",
+                autoplay=True,
+            )
+        elif is_reengagement_request(user_msg):
             queue_companion_voice(
                 state,
                 spoken_companion_line("reengagement", message=reply),
