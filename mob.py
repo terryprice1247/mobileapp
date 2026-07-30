@@ -1373,7 +1373,22 @@ def bonus_mode_day_line():
 
 def bonus_task_invitation(canonical, display, extra_minutes=10):
     """Describe the optional task as an invitation, never unfinished business."""
-    canonical = normalize_task_key(canonical or display)
+    raw_task = str(canonical or display or "").strip().lower()
+
+    # Convert the app's full canonical labels into the simple keys used below.
+    if "spanish" in raw_task:
+        canonical = "spanish"
+    elif "network" in raw_task or "linkedin" in raw_task:
+        canonical = "networking"
+    elif "reading" in raw_task:
+        canonical = "reading"
+    elif "coding" in raw_task:
+        canonical = "coding"
+    elif "exercise" in raw_task or "workout" in raw_task:
+        canonical = "exercise"
+    else:
+        canonical = raw_task
+
     extra_minutes = int(extra_minutes or 10)
 
     lines = {
