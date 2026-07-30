@@ -586,8 +586,32 @@ st.markdown("""
 .calendarWeekdays div{text-align:center;color:#9eabc0;font-size:.67rem;font-weight:900;}
 .calendarLegend{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 12px 0;}
 .calendarLegend span{border:1px solid #293a59;border-radius:999px;padding:5px 8px;background:#09111f;color:#cbd6e8;font-size:.68rem;font-weight:800;}
-.calendarDetail{border:1px solid rgba(139,77,255,.55);border-radius:16px;background:#0a101c;padding:14px;margin-top:12px;}
+@keyframes calendarReveal{
+  0%{opacity:.35;transform:scale(.985) translateY(4px);}
+  55%{opacity:1;transform:scale(1.012) translateY(0);}
+  100%{opacity:1;transform:scale(1);}
+}
+.calendarDetail{
+  border:1px solid rgba(139,77,255,.55);
+  border-radius:16px;
+  background:#0a101c;
+  padding:14px;
+  margin-top:12px;
+  animation:calendarReveal .28s ease-out;
+}
 .calendarDetailTitle{font-size:1rem;font-weight:950;color:#fff;margin-bottom:4px;}
+.calendarCompanion{
+  border:1px solid rgba(91,225,181,.35);
+  border-radius:14px;
+  background:rgba(8,24,31,.78);
+  color:#d9fff1;
+  padding:10px 12px;
+  margin:0 0 12px 0;
+  font-size:.78rem;
+  font-weight:800;
+  line-height:1.45;
+}
+.calendarCompanion b{color:#62f0b2;}
 .calendarStatus{color:#ffd84d;font-size:.78rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;}
 .calendarTask{display:flex;justify-content:space-between;gap:10px;border-top:1px solid rgba(255,255,255,.07);padding:8px 0;font-size:.79rem;}
 .calendarTask:first-of-type{border-top:0;}
@@ -4811,16 +4835,34 @@ def calendar_day_status(record):
     return "complete" if classify_history_record(record) == "MISSION COMPLETE" else "partial"
 
 
-def calendar_symbol(record):
+def calendar_tile_symbol(record):
+    """Quiet month-view color. Celebration appears only after a day is tapped."""
     status = calendar_day_status(record)
-    if status == "complete" and bool(record.get("bonus_completed") or record.get("bonus_upgrades")):
+    if status == "complete" and bool(
+        record.get("bonus_completed") or record.get("bonus_upgrades")
+    ):
+        return "🟨"
+    return {
+        "complete": "🟪",
+        "partial": "🟦",
+        "empty": "⬛",
+        "unavailable": "▫️",
+    }.get(status, "▫️")
+
+
+def calendar_achievement_symbol(record):
+    """Achievement marker revealed in the selected-day detail card."""
+    status = calendar_day_status(record)
+    if status == "complete" and bool(
+        record.get("bonus_completed") or record.get("bonus_upgrades")
+    ):
         return "✨"
     return {
         "complete": "⭐",
         "partial": "◐",
         "empty": "·",
-        "unavailable": "",
-    }.get(status, "")
+        "unavailable": "▫️",
+    }.get(status, "▫️")
 
 
 def calendar_summary_stats(state):
@@ -4858,6 +4900,42 @@ def calendar_summary_stats(state):
     }
 
 
+def calendar_companion_message(state):
+    """Give one restrained, status-aware nudge when the Calendar is opened."""
+    today_record = calendar_record_for_date(today_key(), state)
+    status = calendar_day_status(today_record)
+    completed = int(today_record.get("completed", 0) or 0)
+    total = int(today_record.get("total", len(DAILY_TASKS)) or len(DAILY_TASKS))
+
+    if status == "complete":
+        lines = [
+            "Look at this month. Today's square is protected.",
+            "The evidence is getting harder to ignore.",
+            "Another square protected.",
+            "You kept the promise. The color is the receipt.",
+        ]
+        key = "calendar_complete"
+    elif status == "partial":
+        remaining = max(0, total - completed)
+        lines = [
+            f"One square is still waiting. {remaining} promise{'s' if remaining != 1 else ''} remain.",
+            "The square has started changing. Finish the story.",
+            "You are already in motion. Protect the rest.",
+            "Partial is proof you began. Complete is still available.",
+        ]
+        key = "calendar_partial"
+    else:
+        lines = [
+            "Today's square is still open.",
+            "One honest action changes the color.",
+            "The month is waiting for today's mark.",
+            "Protect one promise. Let the square follow.",
+        ]
+        key = "calendar_empty"
+
+    return choose_fresh_line(state, key, lines)
+
+
 def render_calendar_detail(date_key, state):
     record = calendar_record_for_date(date_key, state)
     status = calendar_day_status(record)
@@ -4867,7 +4945,7 @@ def render_calendar_detail(date_key, state):
         "empty": "No Activity",
         "unavailable": "No Record",
     }
-    symbol = calendar_symbol(record)
+    symbol = calendar_achievement_symbol(record)
     try:
         display_date = datetime.strptime(date_key, "%Y-%m-%d").strftime("%A, %B %-d")
     except ValueError:
@@ -4920,6 +4998,18 @@ def render_calendar(state):
         """,
         unsafe_allow_html=True,
     )
+    companion_line = calendar_companion_message(state)
+    st.markdown(
+        f"<div class='calendarCompanion'><b>Companion:</b> {html.escape(companion_line)}</div>",
+        unsafe_allow_html=True,
+    )
+    queue_companion_voice(
+        state,
+        companion_line,
+        f"calendar_{today_key()}_{calendar_day_status(calendar_record_for_date(today_key(), state))}",
+        autoplay=True,
+    )
+
     st.markdown(
         f"""
         <div class='calendarStats'>
@@ -4968,9 +5058,17 @@ def render_calendar(state):
 
                 date_key = f"{year:04d}-{month:02d}-{day_number:02d}"
                 record = calendar_record_for_date(date_key, state)
-                symbol = calendar_symbol(record)
                 selected = st.session_state.get("calendar_selected") == date_key
-                label = f"{day_number} {symbol}".strip()
+                tile = calendar_tile_symbol(record)
+                reveal = calendar_achievement_symbol(record)
+
+                # Month view stays quiet and color-based. Selecting a date reveals
+                # its achievement marker in both the button and detail card.
+                label = (
+                    f"{day_number} {reveal}"
+                    if selected
+                    else f"{day_number} {tile}"
+                )
 
                 if st.button(
                     label,
@@ -4984,10 +5082,10 @@ def render_calendar(state):
     st.markdown(
         """
         <div class='calendarLegend'>
-          <span>⭐ Promise kept</span>
-          <span>◐ Partial day</span>
-          <span>· No activity</span>
-          <span>✨ Complete + bonus</span>
+          <span>🟪 Promise kept</span>
+          <span>🟦 Partial day</span>
+          <span>⬛ No activity</span>
+          <span>🟨 Complete + bonus</span>
         </div>
         """,
         unsafe_allow_html=True,
