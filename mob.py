@@ -1357,6 +1357,57 @@ def elevenlabs_ready():
     return bool(ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID)
 
 
+def bonus_mode_day_line():
+    """Acknowledge completion first, then leave the door open without pressure."""
+    lines_by_weekday = {
+        0: "Everything from here is optional growth.",
+        1: "You kept your word for today. If you want to invest in tomorrow, the door is open.",
+        2: "The day belongs to you. If you want one more win before you close it out, the door is open.",
+        3: "You already protected the day. This is just polishing it.",
+        4: "Minimums secured. Curiosity can take it from here.",
+        5: "Mission complete. The door is still open if you want it.",
+        6: "Today's promises are protected. Anything else is a gift to tomorrow.",
+    }
+    return lines_by_weekday.get(momentum_now().weekday(), "Everything from here is optional growth.")
+
+
+def bonus_task_invitation(canonical, display, extra_minutes=10):
+    """Describe the optional task as an invitation, never unfinished business."""
+    canonical = normalize_task_key(canonical or display)
+    extra_minutes = int(extra_minutes or 10)
+
+    lines = {
+        "spanish": (
+            f"{display} is today's Bonus Round. "
+            f"Another {extra_minutes} minutes keeps tomorrow's words easier."
+        ),
+        "networking": (
+            f"{display} is today's Bonus Round. "
+            "One message today can become an opportunity weeks from now."
+        ),
+        "reading": (
+            f"{display} is today's Bonus Round. "
+            "One more chapter compounds faster than it feels."
+        ),
+        "coding": (
+            f"{display} is today's Bonus Round. "
+            "One more focused block gives tomorrow a cleaner starting point."
+        ),
+        "exercise": (
+            f"{display} is today's Bonus Round. "
+            "One extra block is available if your body still feels good."
+        ),
+    }
+    return lines.get(
+        canonical,
+        f"{display} is today's Bonus Round. One more block is available if you want it.",
+    )
+
+
+def bonus_mode_companion_line(canonical, display, extra_minutes=10):
+    return f"{bonus_mode_day_line()} {bonus_task_invitation(canonical, display, extra_minutes)}"
+
+
 def spoken_companion_line(event, **context):
     """Create the short line ElevenLabs speaks while the screen keeps full detail."""
     task = str(context.get("task") or "the next move")
@@ -1368,6 +1419,10 @@ def spoken_companion_line(event, **context):
 
     if event == "opening":
         mode = str(context.get("mode") or "Steady Build")
+        is_bonus = bool(context.get("is_bonus"))
+        canonical = str(context.get("canonical") or "")
+        if is_bonus and task:
+            return bonus_mode_companion_line(canonical, task, minutes or 10)
         if task and minutes:
             return f"Welcome back, Terrence. {task} is the priority. Give me {minutes} focused minutes."
         return f"Welcome back, Terrence. {mode} mode is active. Let's protect the next move."
@@ -1396,7 +1451,8 @@ def spoken_companion_line(event, **context):
         return "Every promise is protected. Bonus Round is now available."
 
     if event == "bonus_target":
-        return f"Bonus target: {task}. Add {minutes} more minutes while the momentum is warm."
+        canonical = str(context.get("canonical") or "")
+        return bonus_mode_companion_line(canonical, task, minutes or 10)
 
     if event == "bonus_complete":
         return "Every available upgrade is complete. There's nothing left to prove tonight. Go enjoy your evening."
@@ -3244,9 +3300,10 @@ class CompanionCore:
 
         action = recommendation["action"]
         if recommendation.get("is_bonus"):
-            return (
-                f"Welcome back. {memory_line} All minimums are protected. "
-                f"Bonus target: {action}"
+            return bonus_mode_companion_line(
+                recommendation.get("canonical", ""),
+                recommendation["task"]["display"],
+                recommendation.get("extra_minutes", 10),
             )
         if progress["completed"] == 0:
             return f"Welcome back, Terrence. {memory_line} {self.mode} mode is active. {action}"
@@ -3996,6 +4053,7 @@ def quick_log_mission(state, recommendation, minutes):
             "bonus_target",
             task=next_rec["task"]["display"],
             minutes=next_rec.get("extra_minutes", 0),
+            canonical=next_rec.get("canonical", ""),
         )
         event_key = f"bonus_target_{today_key()}_{next_rec['canonical']}_{next_rec['minutes']}"
     elif next_rec:
@@ -4214,7 +4272,12 @@ def ensure_opening_chat(state):
     rec = core.next_move()
     if rec:
         opening_line = spoken_companion_line(
-            "opening", mode=core.mode, task=rec["task"]["display"], minutes=rec["minutes"]
+            "opening",
+            mode=core.mode,
+            task=rec["task"]["display"],
+            minutes=rec.get("extra_minutes", rec["minutes"]),
+            canonical=rec.get("canonical", ""),
+            is_bonus=bool(rec.get("is_bonus")),
         )
     else:
         opening_line = spoken_companion_line("opening", mode=core.mode)
