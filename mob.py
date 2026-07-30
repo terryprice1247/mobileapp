@@ -7,6 +7,7 @@ import hashlib
 import urllib.request
 import urllib.error
 import shutil
+import calendar
 from pathlib import Path
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -564,6 +565,35 @@ st.markdown("""
 .closeoutList{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px;}
 .closeoutList:last-child{margin-bottom:0;}
 .closeoutTomorrow{font-size:1.05rem;font-weight:950;color:#fff;margin-bottom:3px;}
+
+
+/* Momentum Calendar */
+.calendarHero{
+  border:1px solid rgba(139,77,255,.72);
+  border-radius:18px;
+  padding:16px;
+  margin:10px 0 12px 0;
+  background:radial-gradient(circle at top,rgba(139,77,255,.20),transparent 48%),#0b1020;
+  text-align:center;
+}
+.calendarTitle{font-size:1.2rem;font-weight:950;color:#fff;}
+.calendarSub{font-size:.78rem;color:#aebbd0;margin-top:4px;line-height:1.4;}
+.calendarStats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 14px 0;}
+.calendarStat{border:1px solid #293a59;border-radius:14px;background:#09111f;padding:10px 5px;text-align:center;}
+.calendarStat b{display:block;font-size:1.05rem;color:#ffd84d;}
+.calendarStat span{display:block;font-size:.66rem;font-weight:850;color:#aebbd0;margin-top:2px;}
+.calendarWeekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:8px 0 5px 0;}
+.calendarWeekdays div{text-align:center;color:#9eabc0;font-size:.67rem;font-weight:900;}
+.calendarLegend{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 12px 0;}
+.calendarLegend span{border:1px solid #293a59;border-radius:999px;padding:5px 8px;background:#09111f;color:#cbd6e8;font-size:.68rem;font-weight:800;}
+.calendarDetail{border:1px solid rgba(139,77,255,.55);border-radius:16px;background:#0a101c;padding:14px;margin-top:12px;}
+.calendarDetailTitle{font-size:1rem;font-weight:950;color:#fff;margin-bottom:4px;}
+.calendarStatus{color:#ffd84d;font-size:.78rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;}
+.calendarTask{display:flex;justify-content:space-between;gap:10px;border-top:1px solid rgba(255,255,255,.07);padding:8px 0;font-size:.79rem;}
+.calendarTask:first-of-type{border-top:0;}
+.calendarTask .done{color:#62f0b2;font-weight:850;}
+.calendarTask .missed{color:#8c98ab;font-weight:750;}
+.calendarXP{margin-top:9px;color:#cdd8ea;font-size:.78rem;font-weight:800;}
 
 /* Custom mobile nav */
 .mobileNav{display:none!important;
@@ -1620,11 +1650,35 @@ def default_state():
 
 def load_state():
     state = load_json(TODAY_TASKS_FILE, None)
-    if (
-        not isinstance(state, dict)
-        or state.get("state_schema_version") != STATE_SCHEMA_VERSION
-        or state.get("date") != today_key()
-    ):
+
+    valid_state = (
+        isinstance(state, dict)
+        and state.get("state_schema_version") == STATE_SCHEMA_VERSION
+    )
+
+    # When the Momentum day changes, seal the previous board automatically.
+    # This happens even when End Day was never pressed.
+    if valid_state and state.get("date") and state.get("date") != today_key():
+        previous_key = str(state.get("date"))
+        try:
+            previous_date = datetime.strptime(previous_key, "%Y-%m-%d").date()
+            current_date = datetime.strptime(today_key(), "%Y-%m-%d").date()
+
+            save_progress_to_history(state, date_key=previous_key)
+
+            # Record completely skipped dates as true zero-activity days.
+            gap_day = previous_date + timedelta(days=1)
+            while gap_day < current_date:
+                save_empty_history_day(gap_day.strftime("%Y-%m-%d"))
+                gap_day += timedelta(days=1)
+        except Exception:
+            # A malformed legacy date should never stop the app from opening.
+            pass
+
+        state = default_state()
+        save_json(TODAY_TASKS_FILE, state)
+
+    elif not valid_state:
         state = default_state()
         save_json(TODAY_TASKS_FILE, state)
     state.setdefault("durations", {})
@@ -1664,8 +1718,48 @@ def save_state(state):
     save_json(TODAY_TASKS_FILE, state)
 
 
-def save_progress_to_history(state):
+def save_empty_history_day(date_key):
+    """Create a trustworthy zero-activity calendar record for a skipped day."""
     history = load_json(HISTORY_FILE, {})
+    if not isinstance(history, dict):
+        history = {}
+    if date_key in history:
+        return
+
+    history[date_key] = {
+        "date": date_key,
+        "saved_at": datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d %I:%M %p"),
+        "location": "Unknown",
+        "energy": "Normal",
+        "completed": 0,
+        "total": len(DAILY_TASKS),
+        "finished_all": False,
+        "missed_tasks": [task["canonical"] for task in DAILY_TASKS],
+        "tasks": [
+            {
+                "text": task["canonical"],
+                "display": task["display"],
+                "done": False,
+                "duration_minutes": 0,
+                "xp": 0,
+            }
+            for task in DAILY_TASKS
+        ],
+        "xp_earned": 0,
+        "xp_possible": max_daily_xp(),
+        "day_closed": False,
+        "bonus_upgrades": [],
+        "auto_archived": True,
+        "calendar_status": "empty",
+    }
+    save_json(HISTORY_FILE, history)
+
+
+def save_progress_to_history(state, date_key=None):
+    history = load_json(HISTORY_FILE, {})
+    if not isinstance(history, dict):
+        history = {}
+    record_key = str(date_key or state.get("date") or today_key())
     tasks_payload, missed = [], []
     completed, xp = 0, 0
     for t in DAILY_TASKS:
@@ -1677,8 +1771,8 @@ def save_progress_to_history(state):
         xp += earned
         if not done: missed.append(c)
         tasks_payload.append({"text": c, "display": t["display"], "done": done, "duration_minutes": d, "xp": earned})
-    history[today_key()] = {
-        "date": today_key(), "saved_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+    history[record_key] = {
+        "date": record_key, "saved_at": datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d %I:%M %p"),
         "location": state.get("location", "Work"), "energy": state.get("energy", "Normal"),
         "completed": completed, "total": len(DAILY_TASKS), "finished_all": completed == len(DAILY_TASKS),
         "missed_tasks": missed, "tasks": tasks_payload, "xp_earned": xp,
@@ -1696,6 +1790,22 @@ def save_progress_to_history(state):
             if task_tier(t["canonical"], state["durations"].get(t["canonical"], 0))
             in {"growth", "mastery"}
         ],
+        "calendar_status": (
+            "complete"
+            if all_energy_minimums_met(state)
+            else ("partial" if completed > 0 else "empty")
+        ),
+        "bonus_completed": bool(
+            all_energy_minimums_met(state)
+            and any(
+                task_tier(
+                    task["canonical"],
+                    state.get("durations", {}).get(task["canonical"], 0),
+                ) in {"growth", "mastery"}
+                for task in DAILY_TASKS
+            )
+        ),
+        "auto_archived": bool(record_key != today_key()),
     }
     save_json(HISTORY_FILE, history)
 
@@ -4632,6 +4742,260 @@ def render_alerts(state):
         st.caption("Nothing is logged today yet. These alerts come from your recent saved sessions.")
 
 
+def calendar_record_for_date(date_key, state):
+    """Return history for a date, using today's live board when appropriate."""
+    if date_key == today_key():
+        tasks_payload = []
+        completed = 0
+        xp = 0
+        for task in DAILY_TASKS:
+            canonical = task["canonical"]
+            minutes = normalize_task_duration(
+                canonical, state.get("durations", {}).get(canonical, 0)
+            )
+            earned = task_xp(canonical, minutes)
+            completed += 1 if minutes > 0 else 0
+            xp += earned
+            tasks_payload.append({
+                "text": canonical,
+                "display": task["display"],
+                "done": minutes > 0,
+                "duration_minutes": minutes,
+                "xp": earned,
+            })
+
+        return {
+            "date": date_key,
+            "completed": completed,
+            "total": len(DAILY_TASKS),
+            "tasks": tasks_payload,
+            "xp_earned": xp,
+            "xp_possible": max_daily_xp(),
+            "energy": state.get("energy", "Normal"),
+            "day_closed": bool(state.get("day_closed", False)),
+            "calendar_status": (
+                "complete"
+                if all_energy_minimums_met(state)
+                else ("partial" if completed > 0 else "empty")
+            ),
+            "bonus_completed": bool(
+                all_energy_minimums_met(state)
+                and any(
+                    task_tier(
+                        task["canonical"],
+                        state.get("durations", {}).get(task["canonical"], 0),
+                    ) in {"growth", "mastery"}
+                    for task in DAILY_TASKS
+                )
+            ),
+            "live": True,
+        }
+
+    history = load_json(HISTORY_FILE, {})
+    record = history.get(date_key, {}) if isinstance(history, dict) else {}
+    return record if isinstance(record, dict) else {}
+
+
+def calendar_day_status(record):
+    """Map one record to complete, partial, empty, or unavailable."""
+    if not isinstance(record, dict) or not record:
+        return "unavailable"
+
+    explicit = str(record.get("calendar_status", "")).lower()
+    if explicit in {"complete", "partial", "empty"}:
+        return explicit
+
+    completed = int(record.get("completed", 0) or 0)
+    if completed <= 0:
+        return "empty"
+    return "complete" if classify_history_record(record) == "MISSION COMPLETE" else "partial"
+
+
+def calendar_symbol(record):
+    status = calendar_day_status(record)
+    if status == "complete" and bool(record.get("bonus_completed") or record.get("bonus_upgrades")):
+        return "✨"
+    return {
+        "complete": "⭐",
+        "partial": "◐",
+        "empty": "·",
+        "unavailable": "",
+    }.get(status, "")
+
+
+def calendar_summary_stats(state):
+    history = load_json(HISTORY_FILE, {})
+    if not isinstance(history, dict):
+        history = {}
+
+    records = dict(history)
+    records[today_key()] = calendar_record_for_date(today_key(), state)
+
+    complete = partial = bonus = 0
+    for record in records.values():
+        status = calendar_day_status(record)
+        complete += 1 if status == "complete" else 0
+        partial += 1 if status == "partial" else 0
+        bonus += 1 if status == "complete" and bool(
+            record.get("bonus_completed") or record.get("bonus_upgrades")
+        ) else 0
+
+    streak = 0
+    day = momentum_now().date()
+    while True:
+        key = day.strftime("%Y-%m-%d")
+        record = records.get(key, {})
+        if calendar_day_status(record) != "complete":
+            break
+        streak += 1
+        day -= timedelta(days=1)
+
+    return {
+        "streak": streak,
+        "complete": complete,
+        "partial": partial,
+        "bonus": bonus,
+    }
+
+
+def render_calendar_detail(date_key, state):
+    record = calendar_record_for_date(date_key, state)
+    status = calendar_day_status(record)
+    status_labels = {
+        "complete": "Promises Protected",
+        "partial": "Partial Day",
+        "empty": "No Activity",
+        "unavailable": "No Record",
+    }
+    symbol = calendar_symbol(record)
+    try:
+        display_date = datetime.strptime(date_key, "%Y-%m-%d").strftime("%A, %B %-d")
+    except ValueError:
+        display_date = date_key
+
+    rows = []
+    for task in record.get("tasks", []):
+        display = html.escape(str(task.get("display") or task.get("text") or "Task"))
+        minutes = int(task.get("duration_minutes", 0) or 0)
+        css_class = "done" if minutes > 0 else "missed"
+        marker = "✓" if minutes > 0 else "—"
+        rows.append(
+            f"<div class='calendarTask'><span class='{css_class}'>{marker} {display}</span>"
+            f"<span>{minutes}m</span></div>"
+        )
+
+    if not rows:
+        rows.append("<div class='calendarTask'><span class='missed'>No saved details</span><span>—</span></div>")
+
+    st.markdown(
+        f"""
+        <div class='calendarDetail'>
+          <div class='calendarDetailTitle'>{symbol} {html.escape(display_date)}</div>
+          <div class='calendarStatus'>{status_labels.get(status, status)}</div>
+          {''.join(rows)}
+          <div class='calendarXP'>XP: {int(record.get('xp_earned', 0) or 0)} / {int(record.get('xp_possible', max_daily_xp()) or max_daily_xp())}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_calendar(state):
+    """Render a tappable month view backed by persistent Momentum history."""
+    today = momentum_now().date()
+    st.session_state.setdefault("calendar_year", today.year)
+    st.session_state.setdefault("calendar_month", today.month)
+    st.session_state.setdefault("calendar_selected", today_key())
+
+    year = int(st.session_state["calendar_year"])
+    month = int(st.session_state["calendar_month"])
+    stats = calendar_summary_stats(state)
+
+    st.markdown(
+        """
+        <div class='calendarHero'>
+          <div class='calendarTitle'>Momentum Calendar</div>
+          <div class='calendarSub'>A visible record of promises protected, partial days, and true rest days.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+        <div class='calendarStats'>
+          <div class='calendarStat'><b>{stats['streak']}</b><span>Promise Streak</span></div>
+          <div class='calendarStat'><b>{stats['complete']}</b><span>Complete Days</span></div>
+          <div class='calendarStat'><b>{stats['partial']}</b><span>Partial Days</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    prev_col, title_col, next_col = st.columns([1, 3, 1])
+    with prev_col:
+        if st.button("‹", key="calendar_prev", use_container_width=True):
+            previous = datetime(year, month, 1) - timedelta(days=1)
+            st.session_state["calendar_year"] = previous.year
+            st.session_state["calendar_month"] = previous.month
+            st.rerun()
+    with title_col:
+        st.markdown(
+            f"<div style='text-align:center;font-weight:950;padding-top:9px'>{calendar.month_name[month]} {year}</div>",
+            unsafe_allow_html=True,
+        )
+    with next_col:
+        if st.button("›", key="calendar_next", use_container_width=True):
+            following = datetime(year, month, 28) + timedelta(days=4)
+            st.session_state["calendar_year"] = following.year
+            st.session_state["calendar_month"] = following.month
+            st.rerun()
+
+    st.markdown(
+        "<div class='calendarWeekdays'>"
+        + "".join(f"<div>{day}</div>" for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    month_rows = calendar.Calendar(firstweekday=0).monthdayscalendar(year, month)
+    for week_index, week in enumerate(month_rows):
+        columns = st.columns(7, gap="small")
+        for column_index, day_number in enumerate(week):
+            with columns[column_index]:
+                if day_number == 0:
+                    st.markdown("<div style='height:45px'></div>", unsafe_allow_html=True)
+                    continue
+
+                date_key = f"{year:04d}-{month:02d}-{day_number:02d}"
+                record = calendar_record_for_date(date_key, state)
+                symbol = calendar_symbol(record)
+                selected = st.session_state.get("calendar_selected") == date_key
+                label = f"{day_number} {symbol}".strip()
+
+                if st.button(
+                    label,
+                    key=f"calendar_day_{date_key}",
+                    use_container_width=True,
+                    type="primary" if selected else "secondary",
+                ):
+                    st.session_state["calendar_selected"] = date_key
+                    st.rerun()
+
+    st.markdown(
+        """
+        <div class='calendarLegend'>
+          <span>⭐ Promise kept</span>
+          <span>◐ Partial day</span>
+          <span>· No activity</span>
+          <span>✨ Complete + bonus</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    render_calendar_detail(st.session_state["calendar_selected"], state)
+
+
 def render_stats(state):
     ts = totals()
     st.markdown(f"""
@@ -4966,9 +5330,10 @@ def render_mobile_nav():
     nav_button(c2, "✅ Tasks", "Tasks")
     nav_button(c3, "⚠️ Alerts", "Alerts")
 
-    c4, c5 = st.columns(2)
+    c4, c5, c6 = st.columns(3)
     nav_button(c4, "🌙 End Day", "End day")
-    nav_button(c5, "✦ Companion", "Commands")
+    nav_button(c5, "📅 Calendar", "Calendar")
+    nav_button(c6, "✦ Companion", "Commands")
 
     return st.session_state["mobile_page"]
 
@@ -4994,6 +5359,8 @@ elif tab == "Alerts":
     render_alerts(state)
 elif tab == "End day":
     render_end_day(state)
+elif tab == "Calendar":
+    render_calendar(state)
 else:
     render_help(state)
 
