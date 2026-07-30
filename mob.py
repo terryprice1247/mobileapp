@@ -4694,6 +4694,164 @@ def update_workout_pb(exercise, entry, pbs):
     return improved
 
 
+def workout_live_entry(exercise, saved):
+    """Read the current Streamlit widget values so group progress updates live."""
+    name = exercise["name"]
+    kind = exercise.get("kind")
+    result = {"done": False, "sets": []}
+
+    if kind == "duration":
+        value = float(
+            st.session_state.get(
+                f"training_{name}_minutes",
+                saved.get("minutes", 0) or 0,
+            )
+            or 0
+        )
+        result.update({"minutes": value, "done": value > 0})
+        return result
+
+    if kind == "distance_time":
+        distance = float(
+            st.session_state.get(
+                f"training_{name}_distance",
+                saved.get("distance", 0) or 0,
+            )
+            or 0
+        )
+        minutes = float(
+            st.session_state.get(
+                f"training_{name}_minutes",
+                saved.get("minutes", 0) or 0,
+            )
+            or 0
+        )
+        result.update({
+            "distance": distance,
+            "minutes": minutes,
+            "done": distance > 0 or minutes > 0,
+        })
+        return result
+
+    existing_sets = saved.get("sets", []) if isinstance(saved.get("sets"), list) else []
+    count = int(
+        st.session_state.get(
+            f"training_set_count_{name}",
+            max(2, len(existing_sets) or 2),
+        )
+    )
+
+    for index in range(count):
+        default = (
+            existing_sets[index]
+            if index < len(existing_sets) and isinstance(existing_sets[index], dict)
+            else {}
+        )
+        if kind == "weight_reps":
+            weight = float(
+                st.session_state.get(
+                    f"training_{name}_weight_{index}",
+                    default.get("weight", 0) or 0,
+                )
+                or 0
+            )
+            reps = int(
+                st.session_state.get(
+                    f"training_{name}_reps_{index}",
+                    default.get("reps", 0) or 0,
+                )
+                or 0
+            )
+            result["sets"].append({"weight": weight, "reps": reps})
+        else:
+            reps = int(
+                st.session_state.get(
+                    f"training_{name}_reps_{index}",
+                    default.get("reps", 0) or 0,
+                )
+                or 0
+            )
+            result["sets"].append({"reps": reps})
+
+    result["done"] = workout_entry_has_data(exercise, result)
+    return result
+
+
+def workout_pb_feedback(exercise, entry, pb):
+    """Return restrained live feedback: distance from PB or a new PB notice."""
+    if not workout_entry_has_data(exercise, entry):
+        return ""
+
+    if not isinstance(pb, dict):
+        try:
+            pb = {"reps": int(pb or 0)}
+        except Exception:
+            pb = {}
+
+    kind = exercise.get("kind")
+
+    if kind == "duration":
+        today = float(entry.get("minutes", 0) or 0)
+        best = float(pb.get("minutes", 0) or 0)
+        if best <= 0:
+            return "First mark recorded."
+        if today > best:
+            return "NEW PERSONAL BEST"
+        gap = best - today
+        return f"{gap:g} min away" if gap > 0 else "Personal best matched"
+
+    if kind == "distance_time":
+        today = float(entry.get("distance", 0) or 0)
+        best = float(pb.get("distance", 0) or 0)
+        if best <= 0:
+            return "First mark recorded."
+        if today > best:
+            return "NEW PERSONAL BEST"
+        gap = best - today
+        return f"{gap:.2f} mi away" if gap > 0 else "Personal best matched"
+
+    if kind == "weight_reps":
+        valid = [
+            item for item in entry.get("sets", [])
+            if isinstance(item, dict)
+            and float(item.get("weight", 0) or 0) > 0
+            and int(item.get("reps", 0) or 0) > 0
+        ]
+        if not valid:
+            return ""
+        today = max(
+            ((float(item["weight"]), int(item["reps"])) for item in valid),
+            default=(0.0, 0),
+        )
+        best = (
+            float(pb.get("weight", 0) or 0),
+            int(pb.get("reps", 0) or 0),
+        )
+        if best == (0.0, 0):
+            return "First mark recorded."
+        if today > best:
+            return "NEW PERSONAL BEST"
+        if today == best:
+            return "Personal best matched"
+        return f"PB: {best[0]:g} lb × {best[1]}"
+
+    today = max(
+        [
+            int(item.get("reps", 0) or 0)
+            for item in entry.get("sets", [])
+            if isinstance(item, dict)
+        ]
+        or [0]
+    )
+    best = int(pb.get("reps", 0) or 0)
+    if best <= 0:
+        return "First mark recorded."
+    if today > best:
+        return "NEW PERSONAL BEST"
+    gap = best - today
+    return f"{gap} rep{'s' if gap != 1 else ''} away" if gap > 0 else "Personal best matched"
+
+
 def render_exercise_card(exercise, saved, pbs, group_name):
     name = exercise["name"]
     kind = exercise.get("kind")
@@ -4810,20 +4968,32 @@ def render_exercise_card(exercise, saved, pbs, group_name):
 
         result["done"] = workout_entry_has_data(exercise, result)
 
+    feedback = workout_pb_feedback(exercise, result, pbs.get(name, {}))
+    if feedback:
+        feedback_class = "newPb" if feedback == "NEW PERSONAL BEST" else "pbGap"
+        st.markdown(
+            f"<div class='trainingFeedback {feedback_class}'>{html.escape(feedback)}</div>",
+            unsafe_allow_html=True,
+        )
+
     return result
 
 
 @st.dialog("🏋️ Training Session", width="small")
 def render_workout_dialog(state):
     workout = state.setdefault("workout", {})
-    groups_hit = sum(
-        1
-        for group in WORKOUT_GROUPS
-        if any(
-            workout_entry_has_data(exercise, workout.get(exercise["name"], {}))
+    groups_hit = 0
+    for group in WORKOUT_GROUPS:
+        group_done = any(
+            workout_live_entry(
+                exercise,
+                workout.setdefault(exercise["name"], {"done": False, "sets": []}),
+            ).get("done")
             for exercise in group["exercises"]
         )
-    )
+        if group_done:
+            groups_hit += 1
+
     progress_pct = int(round((groups_hit / max(1, len(WORKOUT_GROUPS))) * 100))
 
     st.markdown(
@@ -4894,8 +5064,8 @@ def render_workout_dialog(state):
           border:1px solid rgba(112,135,175,.28);
           border-left:4px solid #7c5cff;
           border-radius:17px;
-          padding:14px;
-          margin:13px 0 9px;
+          padding:17px 15px 15px;
+          margin:16px 0 13px;
           box-shadow:0 9px 24px rgba(0,0,0,.23);
         }}
         .trainingExerciseCard.group-cardio{{border-left-color:#ff5b68;}}
@@ -4914,7 +5084,8 @@ def render_workout_dialog(state):
         .trainingExerciseName{{
           font-weight:950;
           color:#fff;
-          font-size:.96rem;
+          font-size:1.12rem;
+          letter-spacing:.01em;
           line-height:1.2;
         }}
         .trainingExerciseTag{{
@@ -4962,6 +5133,27 @@ def render_workout_dialog(state):
           font-weight:950;
         }}
         .trainingBest b{{color:#ffe578;}}
+
+        .trainingFeedback{{
+          margin:8px 0 15px;
+          border-radius:11px;
+          padding:8px 10px;
+          font-size:.68rem;
+          font-weight:950;
+          letter-spacing:.03em;
+          text-align:center;
+        }}
+        .trainingFeedback.pbGap{{
+          background:rgba(66,165,255,.08);
+          border:1px solid rgba(66,165,255,.28);
+          color:#9bd1ff;
+        }}
+        .trainingFeedback.newPb{{
+          background:linear-gradient(135deg,rgba(255,202,60,.18),rgba(255,202,60,.06));
+          border:1px solid rgba(255,202,60,.48);
+          color:#ffe578;
+          box-shadow:0 0 18px rgba(255,202,60,.08);
+        }}
 
         div[data-testid="stExpander"]{{
           border:1px solid rgba(105,128,170,.38)!important;
@@ -5050,13 +5242,30 @@ def render_workout_dialog(state):
     pbs = load_workout_pbs()
     pending = {}
 
+    completed_group_names = []
+
     for group in WORKOUT_GROUPS:
-        hit = any(
-            workout_entry_has_data(exercise, workout.get(exercise["name"], {}))
-            for exercise in group["exercises"]
-        )
-        label = f"{group['icon']}  {group['name']}" + ("  ✓ HIT" if hit else "")
-        with st.expander(label, expanded=False):
+        live_rows = []
+        for exercise in group["exercises"]:
+            saved = workout.setdefault(exercise["name"], {"done": False, "sets": []})
+            live_rows.append(workout_live_entry(exercise, saved))
+
+        completed_count = sum(1 for row in live_rows if row.get("done"))
+        total_count = len(group["exercises"])
+        group_complete = completed_count == total_count and total_count > 0
+
+        if group_complete:
+            completed_group_names.append(group["name"])
+            status = "✓ COMPLETE"
+        elif completed_count:
+            status = f"{completed_count}/{total_count} LOGGED"
+        else:
+            status = f"0/{total_count} LOGGED"
+
+        label = f"{group['icon']}  {group['name']}   •   {status}"
+
+        # A completed group returns to a clean collapsed state on rerun.
+        with st.expander(label, expanded=False if group_complete else False):
             for exercise in group["exercises"]:
                 saved = workout.setdefault(exercise["name"], {"done": False, "sets": []})
                 pending[exercise["name"]] = render_exercise_card(
@@ -5065,6 +5274,28 @@ def render_workout_dialog(state):
                     pbs,
                     group["name"],
                 )
+
+    previous_complete = set(st.session_state.get("training_completed_groups", []))
+    current_complete = set(completed_group_names)
+    newly_complete = current_complete - previous_complete
+
+    if newly_complete:
+        completed_name = sorted(newly_complete)[0]
+        remaining = len(WORKOUT_GROUPS) - len(current_complete)
+        if remaining == 1:
+            companion_line = "One group left."
+        else:
+            companion_line = f"{completed_name} complete."
+
+        queue_companion_voice(
+            state,
+            companion_line,
+            f"training_group_{today_key()}_{completed_name}",
+            autoplay=True,
+        )
+        st.toast(companion_line)
+
+    st.session_state["training_completed_groups"] = sorted(current_complete)
 
     if st.button(
         "🏁 Complete Training Session",
