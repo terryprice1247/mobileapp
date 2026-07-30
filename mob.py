@@ -4694,20 +4694,30 @@ def update_workout_pb(exercise, entry, pbs):
     return improved
 
 
-def render_exercise_card(exercise, saved, pbs):
+def render_exercise_card(exercise, saved, pbs, group_name):
     name = exercise["name"]
     kind = exercise.get("kind")
     last = workout_last_entry(name)
     pb_text = workout_best_display(exercise, pbs.get(name, {}))
     last_text = workout_entry_display(exercise, last)
 
+    group_class = str(group_name or "").strip().lower()
     st.markdown(
         f"""
-        <div class='trainingExerciseCard'>
-          <div class='trainingExerciseName'>{html.escape(name)}</div>
+        <div class='trainingExerciseCard group-{html.escape(group_class)}'>
+          <div class='trainingExerciseTop'>
+            <div class='trainingExerciseName'>{html.escape(name)}</div>
+            <div class='trainingExerciseTag'>TODAY</div>
+          </div>
           <div class='trainingStats'>
-            <div><span>BEST</span><b>{html.escape(pb_text)}</b></div>
-            <div><span>LAST</span><b>{html.escape(last_text)}</b></div>
+            <div class='trainingBest'>
+              <span>🏆 PERSONAL BEST</span>
+              <b>{html.escape(pb_text)}</b>
+            </div>
+            <div class='trainingLast'>
+              <span>LAST SESSION</span>
+              <b>{html.escape(last_text)}</b>
+            </div>
           </div>
         </div>
         """,
@@ -4805,56 +4815,239 @@ def render_exercise_card(exercise, saved, pbs):
 
 @st.dialog("🏋️ Training Session", width="small")
 def render_workout_dialog(state):
+    workout = state.setdefault("workout", {})
+    groups_hit = sum(
+        1
+        for group in WORKOUT_GROUPS
+        if any(
+            workout_entry_has_data(exercise, workout.get(exercise["name"], {}))
+            for exercise in group["exercises"]
+        )
+    )
+    progress_pct = int(round((groups_hit / max(1, len(WORKOUT_GROUPS))) * 100))
+
     st.markdown(
-        """
+        f"""
         <style>
-        .trainingHero{
-          padding:4px 2px 10px;
-          text-align:center;
-        }
-        .trainingHero h3{margin:0;color:#fff;font-size:1.05rem;font-weight:950;}
-        .trainingHero p{margin:4px 0 0;color:#9aa8bd;font-size:.78rem;}
-        .trainingExerciseCard{
-          background:linear-gradient(145deg,rgba(20,28,43,.96),rgba(8,14,25,.96));
-          border:1px solid rgba(122,92,255,.36);
-          border-radius:15px;
-          padding:11px 12px 9px;
-          margin:8px 0 7px;
-        }
-        .trainingExerciseName{font-weight:950;color:#fff;font-size:.94rem;margin-bottom:8px;}
-        .trainingStats{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-        .trainingStats div{
+        .trainingHero{{
+          border:1px solid rgba(124,92,255,.54);
+          background:
+            radial-gradient(circle at top right,rgba(124,92,255,.18),transparent 42%),
+            linear-gradient(145deg,#121a2a,#080d17);
+          border-radius:18px;
+          padding:15px 15px 13px;
+          margin:1px 0 14px;
+          box-shadow:0 12px 30px rgba(0,0,0,.22);
+        }}
+        .trainingHeroTop{{
+          display:flex;
+          align-items:flex-end;
+          justify-content:space-between;
+          gap:12px;
+        }}
+        .trainingHero h3{{
+          margin:0;
+          color:#fff;
+          font-size:1.04rem;
+          font-weight:950;
+          letter-spacing:.02em;
+        }}
+        .trainingHero p{{
+          margin:4px 0 0;
+          color:#aab7cb;
+          font-size:.73rem;
+          line-height:1.45;
+        }}
+        .trainingHeroCount{{
+          flex:0 0 auto;
+          text-align:right;
+          color:#fff;
+          font-size:1.08rem;
+          font-weight:950;
+        }}
+        .trainingHeroCount small{{
+          display:block;
+          color:#8796ae;
+          font-size:.54rem;
+          letter-spacing:.08em;
+          margin-top:2px;
+        }}
+        .trainingProgressTrack{{
+          height:7px;
+          border-radius:999px;
+          background:#202a3b;
+          overflow:hidden;
+          margin-top:12px;
+          border:1px solid rgba(255,255,255,.05);
+        }}
+        .trainingProgressFill{{
+          width:{progress_pct}%;
+          height:100%;
+          border-radius:inherit;
+          background:linear-gradient(90deg,#35a7ff,#8b4dff);
+          transition:width .25s ease;
+        }}
+
+        .trainingExerciseCard{{
+          position:relative;
+          background:linear-gradient(145deg,#172236,#101827);
+          border:1px solid rgba(112,135,175,.28);
+          border-left:4px solid #7c5cff;
+          border-radius:17px;
+          padding:14px;
+          margin:13px 0 9px;
+          box-shadow:0 9px 24px rgba(0,0,0,.23);
+        }}
+        .trainingExerciseCard.group-cardio{{border-left-color:#ff5b68;}}
+        .trainingExerciseCard.group-pull{{border-left-color:#42a5ff;}}
+        .trainingExerciseCard.group-push{{border-left-color:#ff9f43;}}
+        .trainingExerciseCard.group-legs{{border-left-color:#45d483;}}
+        .trainingExerciseCard.group-core{{border-left-color:#b56cff;}}
+
+        .trainingExerciseTop{{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:10px;
+          margin-bottom:11px;
+        }}
+        .trainingExerciseName{{
+          font-weight:950;
+          color:#fff;
+          font-size:.96rem;
+          line-height:1.2;
+        }}
+        .trainingExerciseTag{{
+          color:#b8c4d6;
+          background:#222e42;
+          border:1px solid rgba(255,255,255,.07);
+          border-radius:999px;
+          padding:4px 7px;
+          font-size:.51rem;
+          font-weight:950;
+          letter-spacing:.08em;
+        }}
+        .trainingStats{{
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:9px;
+        }}
+        .trainingStats div{{
+          min-height:59px;
+          border-radius:12px;
+          padding:9px 10px;
+        }}
+        .trainingBest{{
+          background:linear-gradient(145deg,rgba(255,198,56,.12),rgba(255,198,56,.035));
+          border:1px solid rgba(255,198,56,.34);
+        }}
+        .trainingLast{{
           background:rgba(255,255,255,.035);
-          border:1px solid rgba(255,255,255,.06);
-          border-radius:10px;
-          padding:7px 8px;
-        }
-        .trainingStats span{display:block;color:#78879c;font-size:.56rem;font-weight:900;letter-spacing:.09em;}
-        .trainingStats b{display:block;color:#e8edff;font-size:.74rem;margin-top:2px;}
-        div[data-testid="stExpander"]{
-          border:1px solid rgba(122,92,255,.34)!important;
-          border-radius:15px!important;
-          background:rgba(8,14,25,.74)!important;
-          margin-bottom:8px!important;
+          border:1px solid rgba(255,255,255,.07);
+        }}
+        .trainingStats span{{
+          display:block;
+          color:#8998ae;
+          font-size:.53rem;
+          font-weight:950;
+          letter-spacing:.075em;
+          line-height:1.25;
+        }}
+        .trainingBest span{{color:#ffd34f;}}
+        .trainingStats b{{
+          display:block;
+          color:#f4f7ff;
+          font-size:.82rem;
+          margin-top:5px;
+          font-weight:950;
+        }}
+        .trainingBest b{{color:#ffe578;}}
+
+        div[data-testid="stExpander"]{{
+          border:1px solid rgba(105,128,170,.38)!important;
+          border-radius:17px!important;
+          background:#101827!important;
+          margin:0 0 11px!important;
           overflow:hidden!important;
-        }
-        div[data-testid="stExpander"] summary{
-          font-weight:900!important;
+          box-shadow:0 8px 20px rgba(0,0,0,.18)!important;
+        }}
+        div[data-testid="stExpander"] details{{
+          background:#101827!important;
+        }}
+        div[data-testid="stExpander"] summary{{
+          min-height:54px!important;
+          background:linear-gradient(135deg,#19253a,#111a2a)!important;
           color:#fff!important;
-          padding-top:11px!important;
-          padding-bottom:11px!important;
-        }
+          font-weight:950!important;
+          padding:11px 14px!important;
+          border-radius:16px!important;
+        }}
+        div[data-testid="stExpander"] summary:hover{{
+          background:linear-gradient(135deg,#21304a,#162238)!important;
+        }}
+        div[data-testid="stExpander"] summary *{{
+          color:#fff!important;
+          fill:#fff!important;
+        }}
+        div[data-testid="stExpander"] [data-testid="stExpanderDetails"]{{
+          background:#0b1220!important;
+          padding:9px 14px 15px!important;
+          border-top:1px solid rgba(255,255,255,.055)!important;
+        }}
+
+        /* Group accents */
+        div[data-testid="stExpander"]:nth-of-type(1) summary{{border-left:4px solid #ff5b68!important;}}
+        div[data-testid="stExpander"]:nth-of-type(2) summary{{border-left:4px solid #42a5ff!important;}}
+        div[data-testid="stExpander"]:nth-of-type(3) summary{{border-left:4px solid #ff9f43!important;}}
+        div[data-testid="stExpander"]:nth-of-type(4) summary{{border-left:4px solid #45d483!important;}}
+        div[data-testid="stExpander"]:nth-of-type(5) summary{{border-left:4px solid #b56cff!important;}}
+
+        /* Make labels readable and inputs subordinate to the exercise cards. */
+        div[data-testid="stNumberInput"] label,
+        div[data-testid="stNumberInput"] label p{{
+          color:#b7c2d5!important;
+          font-size:.68rem!important;
+          font-weight:800!important;
+        }}
+        div[data-testid="stNumberInput"] input{{
+          background:#162238!important;
+          border:1px solid #49658e!important;
+          color:#fff!important;
+          font-weight:900!important;
+          min-height:42px!important;
+          border-radius:11px!important;
+          box-shadow:none!important;
+        }}
+        div[data-testid="stNumberInput"] button{{
+          background:#1c2a41!important;
+          border-color:#49658e!important;
+          color:#fff!important;
+        }}
+        button[kind="secondary"]{{
+          border-radius:11px!important;
+        }}
         </style>
+
         <div class='trainingHero'>
-          <h3>BUILD STRENGTH</h3>
-          <p>Open a group. Log what you trained. Beat your last session when you can.</p>
+          <div class='trainingHeroTop'>
+            <div>
+              <h3>TODAY'S TRAINING</h3>
+              <p>Open a group. Log what you trained. Beat the last session when you can.</p>
+            </div>
+            <div class='trainingHeroCount'>
+              {groups_hit}/{len(WORKOUT_GROUPS)}
+              <small>GROUPS HIT</small>
+            </div>
+          </div>
+          <div class='trainingProgressTrack'>
+            <div class='trainingProgressFill'></div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     pbs = load_workout_pbs()
-    workout = state.setdefault("workout", {})
     pending = {}
 
     for group in WORKOUT_GROUPS:
@@ -4866,7 +5059,12 @@ def render_workout_dialog(state):
         with st.expander(label, expanded=False):
             for exercise in group["exercises"]:
                 saved = workout.setdefault(exercise["name"], {"done": False, "sets": []})
-                pending[exercise["name"]] = render_exercise_card(exercise, saved, pbs)
+                pending[exercise["name"]] = render_exercise_card(
+                    exercise,
+                    saved,
+                    pbs,
+                    group["name"],
+                )
 
     if st.button(
         "🏁 Complete Training Session",
