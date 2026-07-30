@@ -50,6 +50,7 @@ def seed_persistent_file(filename, fallback):
 HISTORY_FILE = seed_persistent_file("momentum_history.json", {})
 TODAY_TASKS_FILE = seed_persistent_file("today_tasks_state.json", {})
 WORKOUT_PB_FILE = seed_persistent_file("workout_personal_bests.json", {})
+WORKOUT_LOG_FILE = seed_persistent_file("workout_training_history.json", [])
 
 # Quotes are app content, not changing user progress, so they stay in GitHub.
 QUOTES_FILE = APP_DIR / "momentum_quotes.json"
@@ -68,13 +69,57 @@ ELEVENLABS_VOICE_ID = runtime_secret("ELEVENLABS_VOICE_ID")
 ELEVENLABS_MODEL_ID = runtime_secret("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
 ELEVENLABS_OUTPUT_FORMAT = "mp3_44100_128"
 
-WORK_EXERCISES = [
-    {"name": "Jump Rope", "unit": "m", "icon": "⟳"},
-    {"name": "Pull-ups", "unit": "reps", "icon": "⇧"},
-    {"name": "Chin-ups", "unit": "reps", "icon": "↟"},
-    {"name": "Squats", "unit": "reps", "icon": "⇩"},
-    {"name": "Leg Raises", "unit": "reps", "icon": "⌃"},
+WORKOUT_GROUPS = [
+    {
+        "name": "Cardio",
+        "icon": "♥",
+        "exercises": [
+            {"name": "Jump Rope", "kind": "duration", "unit": "min"},
+            {"name": "Treadmill", "kind": "distance_time", "unit": "mi"},
+        ],
+    },
+    {
+        "name": "Pull",
+        "icon": "↟",
+        "exercises": [
+            {"name": "Pull-ups", "kind": "reps"},
+            {"name": "Chin-ups", "kind": "reps"},
+            {"name": "Dumbbell Curls", "kind": "weight_reps", "weight_unit": "lb"},
+        ],
+    },
+    {
+        "name": "Push",
+        "icon": "⇧",
+        "exercises": [
+            {"name": "Push-ups", "kind": "reps"},
+            {"name": "Close-grip Push-ups", "kind": "reps"},
+            {"name": "Dips", "kind": "reps"},
+        ],
+    },
+    {
+        "name": "Legs",
+        "icon": "⇩",
+        "exercises": [
+            {"name": "Dumbbell Squats", "kind": "weight_reps", "weight_unit": "lb"},
+            {"name": "Barbell Squats", "kind": "weight_reps", "weight_unit": "lb"},
+        ],
+    },
+    {
+        "name": "Core",
+        "icon": "⌃",
+        "exercises": [
+            {"name": "Leg Raises", "kind": "reps"},
+            {"name": "Ab Wheel", "kind": "reps"},
+        ],
+    },
 ]
+
+WORK_EXERCISES = [
+    {**exercise, "group": group["name"], "icon": group["icon"]}
+    for group in WORKOUT_GROUPS
+    for exercise in group["exercises"]
+]
+
 
 DAILY_TASKS = [
     {"display": "Coding", "canonical": "Coding Core Task", "difficulty": "Hard", "xp_by_minutes": {20: 40, 30: 60, 40: 80}},
@@ -1731,7 +1776,7 @@ def default_state():
         "durations": {t["canonical"]: 0 for t in DAILY_TASKS},
         "collapsed_tasks": [],
         "workout": {
-            exercise["name"]: {"done": False, "set1": 0, "set2": 0}
+            exercise["name"]: {"done": False, "sets": []}
             for exercise in WORK_EXERCISES
         },
         "day_closed": False,
@@ -1791,14 +1836,16 @@ def load_state():
         name = exercise["name"]
         row = state["workout"].setdefault(name, {})
         row["done"] = bool(row.get("done", False))
-        try:
-            row["set1"] = max(0, int(row.get("set1", 0) or 0))
-        except Exception:
-            row["set1"] = 0
-        try:
-            row["set2"] = max(0, int(row.get("set2", 0) or 0))
-        except Exception:
-            row["set2"] = 0
+        if not isinstance(row.get("sets"), list):
+            legacy_sets = []
+            for legacy_key in ("set1", "set2"):
+                try:
+                    value = max(0, int(row.get(legacy_key, 0) or 0))
+                except Exception:
+                    value = 0
+                if value:
+                    legacy_sets.append({"reps": value})
+            row["sets"] = legacy_sets
     valid_tasks = {t["canonical"] for t in DAILY_TASKS}
     state["collapsed_tasks"] = [c for c in state["collapsed_tasks"] if c in valid_tasks]
     for t in DAILY_TASKS:
@@ -4503,113 +4550,379 @@ def render_home(state):
 
 def load_workout_pbs():
     raw = load_json(WORKOUT_PB_FILE, {})
-    if not isinstance(raw, dict):
-        raw = {}
+    return raw if isinstance(raw, dict) else {}
 
-    cleaned = {}
-    for exercise in WORK_EXERCISES:
-        name = exercise["name"]
+
+def load_workout_history():
+    raw = load_json(WORKOUT_LOG_FILE, [])
+    return raw if isinstance(raw, list) else []
+
+
+def workout_last_entry(exercise_name):
+    for session in reversed(load_workout_history()):
+        exercises = session.get("exercises", {}) if isinstance(session, dict) else {}
+        entry = exercises.get(exercise_name)
+        if isinstance(entry, dict) and entry.get("done"):
+            return entry
+    return None
+
+
+def workout_entry_has_data(exercise, entry):
+    kind = exercise.get("kind")
+    if kind == "duration":
+        return float(entry.get("minutes", 0) or 0) > 0
+    if kind == "distance_time":
+        return (
+            float(entry.get("distance", 0) or 0) > 0
+            or float(entry.get("minutes", 0) or 0) > 0
+        )
+    sets = entry.get("sets", [])
+    if not isinstance(sets, list):
+        return False
+    if kind == "weight_reps":
+        return any(
+            float(item.get("weight", 0) or 0) > 0
+            and int(item.get("reps", 0) or 0) > 0
+            for item in sets if isinstance(item, dict)
+        )
+    return any(
+        int(item.get("reps", 0) or 0) > 0
+        for item in sets if isinstance(item, dict)
+    )
+
+
+def workout_best_display(exercise, pb):
+    if not isinstance(pb, dict):
         try:
-            cleaned[name] = max(0, int(raw.get(name, 0) or 0))
+            legacy = int(pb or 0)
         except Exception:
-            cleaned[name] = 0
-    return cleaned
+            legacy = 0
+        pb = {"reps": legacy} if legacy else {}
+
+    kind = exercise.get("kind")
+    if kind == "duration":
+        return f"{pb.get('minutes', 0):g} min" if pb.get("minutes") else "—"
+    if kind == "distance_time":
+        return f"{pb.get('distance', 0):g} mi" if pb.get("distance") else "—"
+    if kind == "weight_reps":
+        if pb.get("weight") and pb.get("reps"):
+            return f"{pb['weight']:g} lb × {pb['reps']}"
+        return "—"
+    return str(pb.get("reps", "—")) if pb.get("reps") else "—"
+
+
+def workout_entry_display(exercise, entry):
+    if not entry:
+        return "—"
+    kind = exercise.get("kind")
+    if kind == "duration":
+        return f"{float(entry.get('minutes', 0) or 0):g} min"
+    if kind == "distance_time":
+        distance = float(entry.get("distance", 0) or 0)
+        minutes = float(entry.get("minutes", 0) or 0)
+        if distance and minutes:
+            return f"{distance:g} mi • {minutes:g} min"
+        return f"{distance:g} mi" if distance else f"{minutes:g} min"
+    sets = entry.get("sets", [])
+    valid = [item for item in sets if isinstance(item, dict)]
+    if kind == "weight_reps":
+        valid = [item for item in valid if item.get("weight") and item.get("reps")]
+        return " • ".join(f"{float(x['weight']):g}×{int(x['reps'])}" for x in valid) or "—"
+    valid = [item for item in valid if item.get("reps")]
+    return " / ".join(str(int(x["reps"])) for x in valid) or "—"
 
 
 def workout_summary(state):
     rows = state.get("workout", {})
-    completed = sum(1 for exercise in WORK_EXERCISES if rows.get(exercise["name"], {}).get("done"))
+    completed = sum(
+        1 for exercise in WORK_EXERCISES
+        if workout_entry_has_data(exercise, rows.get(exercise["name"], {}))
+    )
     return f"{completed} exercise{'s' if completed != 1 else ''} logged" if completed else "Workout not started"
 
 
-@st.dialog("🏋️ Log workout", width="small")
+def update_workout_pb(exercise, entry, pbs):
+    name = exercise["name"]
+    current = pbs.get(name, {})
+    if not isinstance(current, dict):
+        try:
+            current = {"reps": int(current or 0)}
+        except Exception:
+            current = {}
+
+    kind = exercise.get("kind")
+    improved = False
+
+    if kind == "duration":
+        value = float(entry.get("minutes", 0) or 0)
+        if value > float(current.get("minutes", 0) or 0):
+            current["minutes"] = value
+            improved = True
+    elif kind == "distance_time":
+        value = float(entry.get("distance", 0) or 0)
+        if value > float(current.get("distance", 0) or 0):
+            current["distance"] = value
+            current["minutes"] = float(entry.get("minutes", 0) or 0)
+            improved = True
+    elif kind == "weight_reps":
+        valid = [
+            item for item in entry.get("sets", [])
+            if isinstance(item, dict)
+            and float(item.get("weight", 0) or 0) > 0
+            and int(item.get("reps", 0) or 0) > 0
+        ]
+        if valid:
+            best = max(valid, key=lambda x: (float(x["weight"]), int(x["reps"])))
+            old_pair = (
+                float(current.get("weight", 0) or 0),
+                int(current.get("reps", 0) or 0),
+            )
+            new_pair = (float(best["weight"]), int(best["reps"]))
+            if new_pair > old_pair:
+                current = {"weight": new_pair[0], "reps": new_pair[1]}
+                improved = True
+    else:
+        best_reps = max(
+            [int(item.get("reps", 0) or 0) for item in entry.get("sets", []) if isinstance(item, dict)]
+            or [0]
+        )
+        if best_reps > int(current.get("reps", 0) or 0):
+            current["reps"] = best_reps
+            improved = True
+
+    pbs[name] = current
+    return improved
+
+
+def render_exercise_card(exercise, saved, pbs):
+    name = exercise["name"]
+    kind = exercise.get("kind")
+    last = workout_last_entry(name)
+    pb_text = workout_best_display(exercise, pbs.get(name, {}))
+    last_text = workout_entry_display(exercise, last)
+
+    st.markdown(
+        f"""
+        <div class='trainingExerciseCard'>
+          <div class='trainingExerciseName'>{html.escape(name)}</div>
+          <div class='trainingStats'>
+            <div><span>BEST</span><b>{html.escape(pb_text)}</b></div>
+            <div><span>LAST</span><b>{html.escape(last_text)}</b></div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    result = {"done": False, "sets": []}
+
+    if kind == "duration":
+        minutes = st.number_input(
+            "Today's minutes",
+            min_value=0.0,
+            max_value=999.0,
+            value=float(saved.get("minutes", 0) or 0),
+            step=1.0,
+            key=f"training_{name}_minutes",
+        )
+        result.update({"minutes": minutes, "done": minutes > 0})
+
+    elif kind == "distance_time":
+        left, right = st.columns(2)
+        with left:
+            distance = st.number_input(
+                "Distance (mi)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(saved.get("distance", 0) or 0),
+                step=0.1,
+                format="%.2f",
+                key=f"training_{name}_distance",
+            )
+        with right:
+            minutes = st.number_input(
+                "Minutes",
+                min_value=0.0,
+                max_value=999.0,
+                value=float(saved.get("minutes", 0) or 0),
+                step=1.0,
+                key=f"training_{name}_minutes",
+            )
+        result.update({
+            "distance": distance,
+            "minutes": minutes,
+            "done": distance > 0 or minutes > 0,
+        })
+
+    else:
+        existing_sets = saved.get("sets", []) if isinstance(saved.get("sets"), list) else []
+        count_key = f"training_set_count_{name}"
+        if count_key not in st.session_state:
+            st.session_state[count_key] = max(2, len(existing_sets) or 2)
+
+        for index in range(st.session_state[count_key]):
+            default = existing_sets[index] if index < len(existing_sets) and isinstance(existing_sets[index], dict) else {}
+            if kind == "weight_reps":
+                weight_col, reps_col = st.columns(2)
+                with weight_col:
+                    weight = st.number_input(
+                        f"Set {index + 1} weight (lb)",
+                        min_value=0.0,
+                        max_value=2000.0,
+                        value=float(default.get("weight", 0) or 0),
+                        step=5.0,
+                        key=f"training_{name}_weight_{index}",
+                    )
+                with reps_col:
+                    reps = st.number_input(
+                        f"Set {index + 1} reps",
+                        min_value=0,
+                        max_value=999,
+                        value=int(default.get("reps", 0) or 0),
+                        step=1,
+                        key=f"training_{name}_reps_{index}",
+                    )
+                result["sets"].append({"weight": weight, "reps": reps})
+            else:
+                reps = st.number_input(
+                    f"Set {index + 1} reps",
+                    min_value=0,
+                    max_value=999,
+                    value=int(default.get("reps", 0) or 0),
+                    step=1,
+                    key=f"training_{name}_reps_{index}",
+                )
+                result["sets"].append({"reps": reps})
+
+        if st.button("＋ Add set", key=f"training_add_set_{name}", use_container_width=True):
+            st.session_state[count_key] += 1
+            st.rerun()
+
+        result["done"] = workout_entry_has_data(exercise, result)
+
+    return result
+
+
+@st.dialog("🏋️ Training Session", width="small")
 def render_workout_dialog(state):
+    st.markdown(
+        """
+        <style>
+        .trainingHero{
+          padding:4px 2px 10px;
+          text-align:center;
+        }
+        .trainingHero h3{margin:0;color:#fff;font-size:1.05rem;font-weight:950;}
+        .trainingHero p{margin:4px 0 0;color:#9aa8bd;font-size:.78rem;}
+        .trainingExerciseCard{
+          background:linear-gradient(145deg,rgba(20,28,43,.96),rgba(8,14,25,.96));
+          border:1px solid rgba(122,92,255,.36);
+          border-radius:15px;
+          padding:11px 12px 9px;
+          margin:8px 0 7px;
+        }
+        .trainingExerciseName{font-weight:950;color:#fff;font-size:.94rem;margin-bottom:8px;}
+        .trainingStats{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+        .trainingStats div{
+          background:rgba(255,255,255,.035);
+          border:1px solid rgba(255,255,255,.06);
+          border-radius:10px;
+          padding:7px 8px;
+        }
+        .trainingStats span{display:block;color:#78879c;font-size:.56rem;font-weight:900;letter-spacing:.09em;}
+        .trainingStats b{display:block;color:#e8edff;font-size:.74rem;margin-top:2px;}
+        div[data-testid="stExpander"]{
+          border:1px solid rgba(122,92,255,.34)!important;
+          border-radius:15px!important;
+          background:rgba(8,14,25,.74)!important;
+          margin-bottom:8px!important;
+          overflow:hidden!important;
+        }
+        div[data-testid="stExpander"] summary{
+          font-weight:900!important;
+          color:#fff!important;
+          padding-top:11px!important;
+          padding-bottom:11px!important;
+        }
+        </style>
+        <div class='trainingHero'>
+          <h3>BUILD STRENGTH</h3>
+          <p>Open a group. Log what you trained. Beat your last session when you can.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     pbs = load_workout_pbs()
     workout = state.setdefault("workout", {})
-
-    header_work, header_s1, header_s2, header_pb = st.columns([1.28, 0.62, 0.62, 0.36])
-    with header_work:
-        st.markdown("<div class='workoutGridHeader left'>EXERCISE</div>", unsafe_allow_html=True)
-    with header_s1:
-        st.markdown("<div class='workoutGridHeader'>SET 1</div>", unsafe_allow_html=True)
-    with header_s2:
-        st.markdown("<div class='workoutGridHeader'>SET 2</div>", unsafe_allow_html=True)
-    with header_pb:
-        st.markdown("<div class='workoutGridHeader'>PB</div>", unsafe_allow_html=True)
-
     pending = {}
 
-    for exercise in WORK_EXERCISES:
-        name = exercise["name"]
-        unit = exercise["unit"]
-        icon = exercise.get("icon", "•")
-        saved = workout.setdefault(name, {"done": False, "set1": 0, "set2": 0})
-
-        work_col, set1_col, set2_col, pb_col = st.columns(
-            [1.28, 0.62, 0.62, 0.36],
-            vertical_alignment="center",
+    for group in WORKOUT_GROUPS:
+        hit = any(
+            workout_entry_has_data(exercise, workout.get(exercise["name"], {}))
+            for exercise in group["exercises"]
         )
+        label = f"{group['icon']}  {group['name']}" + ("  ✓ HIT" if hit else "")
+        with st.expander(label, expanded=False):
+            for exercise in group["exercises"]:
+                saved = workout.setdefault(exercise["name"], {"done": False, "sets": []})
+                pending[exercise["name"]] = render_exercise_card(exercise, saved, pbs)
 
-        with work_col:
-            done = st.checkbox(
-                f"{icon}  {name}",
-                value=bool(saved.get("done", False)),
-                key=f"work_done_{name}",
-            )
-
-        with set1_col:
-            set1 = st.number_input(
-                f"{name} set 1",
-                min_value=0,
-                max_value=999,
-                value=int(saved.get("set1", 0) or 0),
-                step=1,
-                key=f"work_set1_{name}",
-                label_visibility="collapsed",
-            )
-
-        with set2_col:
-            set2 = st.number_input(
-                f"{name} set 2",
-                min_value=0,
-                max_value=999,
-                value=int(saved.get("set2", 0) or 0),
-                step=1,
-                key=f"work_set2_{name}",
-                label_visibility="collapsed",
-            )
-
-        with pb_col:
-            suffix = "m" if unit == "m" and pbs.get(name, 0) else ""
-            pb_value = f"{pbs.get(name, 0)}{suffix}" if pbs.get(name, 0) else "—"
-            st.markdown(f"<div class='workoutPB'>{pb_value}</div>", unsafe_allow_html=True)
-
-        pending[name] = {
-            "done": done,
-            "set1": int(set1),
-            "set2": int(set2),
-        }
-
-    if st.button("Save workout", key="save_workout_log", use_container_width=True, type="primary"):
-        new_pb_count = 0
+    if st.button(
+        "🏁 Complete Training Session",
+        key="save_workout_log",
+        use_container_width=True,
+        type="primary",
+    ):
+        new_pb_names = []
+        completed_groups = set()
+        clean_session = {}
 
         for exercise in WORK_EXERCISES:
             name = exercise["name"]
-            row = pending[name]
+            row = pending.get(name, workout.get(name, {"done": False, "sets": []}))
+            row["done"] = workout_entry_has_data(exercise, row)
             workout[name] = row
+            clean_session[name] = row
 
-            if row["done"] and row["set1"] > pbs.get(name, 0):
-                pbs[name] = row["set1"]
-                new_pb_count += 1
+            if row["done"]:
+                completed_groups.add(exercise["group"])
+                if update_workout_pb(exercise, row, pbs):
+                    new_pb_names.append(name)
 
         state["workout"] = workout
         save_state(state)
         save_json(WORKOUT_PB_FILE, pbs)
 
-        if new_pb_count:
-            st.toast(f"Workout saved • {new_pb_count} new PB{'s' if new_pb_count != 1 else ''}!")
+        history = load_workout_history()
+        history.append({
+            "date": today_key(),
+            "saved_at": momentum_now().isoformat(),
+            "groups": sorted(completed_groups),
+            "exercises": clean_session,
+            "new_pbs": new_pb_names,
+        })
+        save_json(WORKOUT_LOG_FILE, history[-250:])
+
+        if new_pb_names:
+            st.toast(
+                f"Session complete • {len(completed_groups)} groups • "
+                f"{len(new_pb_names)} new PB{'s' if len(new_pb_names) != 1 else ''}!"
+            )
+            queue_companion_voice(
+                state,
+                "Stronger. Momentum noticed.",
+                f"workout_pb_{today_key()}_{len(new_pb_names)}",
+                autoplay=True,
+            )
         else:
-            st.toast("Workout saved.")
+            st.toast(f"Training session complete • {len(completed_groups)} groups hit.")
+            queue_companion_voice(
+                state,
+                "Training session recorded.",
+                f"workout_saved_{today_key()}",
+                autoplay=True,
+            )
 
         st.rerun()
 
