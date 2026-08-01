@@ -4056,6 +4056,54 @@ def add_chat(state, who, msg):
 
 
 
+def task_completion_spoken_line(state, task_display, next_task_display="", remaining=0):
+    """Short, varied acknowledgement after a Home-screen target is completed."""
+    task_display = str(task_display or "That target").strip()
+    next_task_display = str(next_task_display or "").strip()
+    remaining = max(0, int(remaining or 0))
+
+    if remaining <= 0:
+        return choose_fresh_line(
+            state,
+            "spoken_target_complete_final",
+            [
+                f"{task_display} is protected. Every daily promise is complete.",
+                f"{task_display} closes the list. You kept your word today.",
+                f"{task_display} is handled. The core day is complete.",
+            ],
+        )
+
+    if remaining == 1:
+        return choose_fresh_line(
+            state,
+            "spoken_target_complete_one_left",
+            [
+                f"{task_display} is handled. One promise left.",
+                f"Good. {task_display} is protected. One more closes the list.",
+                f"One down. One remains.",
+                f"{task_display} is done. Finish the last one clean.",
+            ],
+        )
+
+    choices = [
+        f"{task_display} is handled. {remaining} to go.",
+        f"One down. {remaining} promises remain.",
+        f"{task_display} is protected. Keep moving.",
+        f"Good. {remaining} targets are still open.",
+    ]
+    if next_task_display:
+        choices.extend([
+            f"{task_display} is handled. {next_task_display} is next.",
+            f"That one is protected. Move to {next_task_display}.",
+        ])
+
+    return choose_fresh_line(
+        state,
+        f"spoken_target_complete_{remaining}",
+        choices,
+    )
+
+
 def quick_log_mission(state, recommendation, minutes):
     """Log the current Core-selected mission directly from Home."""
     if not recommendation:
@@ -4119,16 +4167,23 @@ def quick_log_mission(state, recommendation, minutes):
         )
         event_key = f"bonus_target_{today_key()}_{next_rec['canonical']}_{next_rec['minutes']}"
     elif next_rec:
-        spoken = spoken_companion_line(
-            "task_logged",
-            task=saved_task["display"] if saved_task else display_task_name(canonical),
-            next_task=next_rec["task"]["display"],
+        task_display = saved_task["display"] if saved_task else display_task_name(canonical)
+        remaining = max(0, len(DAILY_TASKS) - completed_count(state))
+        spoken = task_completion_spoken_line(
+            state,
+            task_display,
+            next_rec["task"]["display"],
+            remaining,
         )
         event_key = f"task_logged_{today_key()}_{canonical}_{minutes}"
     else:
-        spoken = spoken_companion_line(
-            "task_logged",
-            task=saved_task["display"] if saved_task else display_task_name(canonical),
+        task_display = saved_task["display"] if saved_task else display_task_name(canonical)
+        remaining = max(0, len(DAILY_TASKS) - completed_count(state))
+        spoken = task_completion_spoken_line(
+            state,
+            task_display,
+            "",
+            remaining,
         )
         event_key = f"task_logged_{today_key()}_{canonical}_{minutes}"
     queue_companion_voice(state, spoken, event_key, autoplay=True)
@@ -4343,7 +4398,18 @@ def ensure_opening_chat(state):
         )
     else:
         opening_line = spoken_companion_line("opening", mode=core.mode)
-    queue_companion_voice(state, opening_line, f"opening_{today_key()}", autoplay=True)
+    opening_day = today_key()
+    if (
+        st.session_state.get("opening_voice_day") != opening_day
+        and not st.session_state.get("pending_companion_voice")
+    ):
+        st.session_state["opening_voice_day"] = opening_day
+        queue_companion_voice(
+            state,
+            opening_line,
+            f"opening_{opening_day}",
+            autoplay=True,
+        )
 
 
 def clear_chat(state):
