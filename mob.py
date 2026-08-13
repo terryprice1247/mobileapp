@@ -423,6 +423,7 @@ st.markdown("""
 .stat{border:1px solid var(--line); background:#07101f; border-radius:14px; padding:8px; text-align:center;}
 .stat .n{font-size:1.62rem; font-weight:900; color:var(--gold); line-height:1.05;}
 .stat .t{font-size:.72rem; color:var(--muted); font-weight:800;}
+.stat .life{font-size:.58rem; color:#8fa2bf; font-weight:850; margin-top:4px; white-space:nowrap;}
 .progressWrap{margin:2px 0 14px 0;}
 .progressTitle{color:#f7f4ff; font-size:.80rem; font-weight:900; letter-spacing:.35px; margin:0 0 5px 2px;}
 .progressMeta{display:flex; justify-content:space-between; gap:10px; color:#a9b5ca; font-size:.76rem; font-weight:800; margin:5px 2px 0 2px;}
@@ -2465,6 +2466,30 @@ def xp_today(state):
     return sum(task_xp(t["canonical"], state["durations"].get(t["canonical"], 0)) for t in DAILY_TASKS)
 
 
+def lifetime_xp(state):
+    """Return permanent XP without double-counting today's changing board.
+
+    Prior days come from the persistent Momentum history file. Today's value
+    comes directly from the live state, so upgrades and edits are reflected
+    immediately even before End Day is pressed.
+    """
+    history = load_json(HISTORY_FILE, {})
+    if not isinstance(history, dict):
+        history = {}
+
+    current_key = today_key()
+    prior_xp = 0
+
+    for date_key, record in history.items():
+        if date_key == current_key or not isinstance(record, dict):
+            continue
+        if record.get("is_inactive"):
+            continue
+        prior_xp += int(record.get("xp_earned", 0) or 0)
+
+    return max(0, prior_xp + xp_today(state))
+
+
 def next_task(state):
     """Legacy ordered fallback. The real recommendation engine is below."""
     for t in DAILY_TASKS:
@@ -3223,6 +3248,7 @@ class CompanionCore:
                 "completed": len(completed),
                 "total": len(DAILY_TASKS),
                 "xp": xp_today(self.state),
+                "lifetime_xp": lifetime_xp(self.state),
                 "xp_possible": max_daily_xp(),
                 "completed_tasks": completed,
                 "remaining_tasks": remaining,
@@ -3586,7 +3612,8 @@ class CompanionCore:
             f"Energy: {self.snapshot['energy']}\n"
             f"Location: {self.snapshot['location']}\n\n"
             f"Progress: {progress['completed']}/{progress['total']}\n"
-            f"XP: {progress['xp']}/{progress['xp_possible']}\n"
+            f"XP Today: {progress['xp']}/{progress['xp_possible']}\n"
+            f"Lifetime XP: {progress.get('lifetime_xp', 0):,}\n"
             f"Completed: {', '.join(progress['completed_tasks']) if progress['completed_tasks'] else 'None'}\n"
             f"Remaining: {', '.join(progress['remaining_tasks']) if progress['remaining_tasks'] else 'None'}\n\n"
             f"Next Move: {next_name} — {next_minutes}\n"
@@ -4241,7 +4268,11 @@ def render_header(state, animate_mission=False):
     <div class="statGrid">
       <div class="stat"><div class="t">PROGRESS</div><div class="n">{comp}/5</div></div>
       <div class="stat"><div class="t">STREAK</div><div class="n">{ts['streak']}</div></div>
-      <div class="stat"><div class="t">EXP</div><div class="n">{xp_today(state)}</div></div>
+      <div class="stat">
+        <div class="t">EXP</div>
+        <div class="n">{xp_today(state)}</div>
+        <div class="life">Lifetime {lifetime_xp(state):,}</div>
+      </div>
     </div>
     """, unsafe_allow_html=True)
     st.markdown("<div class='progressWrap'><div class='progressTitle'>TODAY'S PROGRESS</div>", unsafe_allow_html=True)
