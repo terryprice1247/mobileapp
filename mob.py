@@ -1858,8 +1858,17 @@ def load_state():
 
 
 def save_state(state):
-    state["date"] = today_key()
-    state["updated_at"] = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    """Persist the live board without changing which Momentum day it belongs to.
+
+    A board gets its date when it is created by default_state().  Preserving that
+    date is important around the 2:00 AM rollover: a late click on End Day /
+    Begin Tomorrow must never re-stamp yesterday's completed board as today.
+    load_state() is responsible for detecting a date mismatch, archiving the old
+    board, and creating the fresh day's state.
+    """
+    if not state.get("date"):
+        state["date"] = today_key()
+    state["updated_at"] = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d %I:%M %p")
     save_json(TODAY_TASKS_FILE, state)
 
 
@@ -4117,9 +4126,10 @@ def handle_command(text, state):
     if "end day" in low or "close day" in low:
         if completed_count(state) < len(DAILY_TASKS):
             return core.quote("early_quit")
+        closing_date = str(state.get("date") or today_key())
         state["day_closed"] = True
         save_state(state)
-        save_progress_to_history(state)
+        save_progress_to_history(state, date_key=closing_date)
         return get_companion_core(state).end_day_message()
 
     canonical = task_by_words(low)
@@ -4431,14 +4441,17 @@ def render_header(state, animate_mission=False):
                 type="primary",
                 key="bonus_complete_see_you_tomorrow",
             ):
+                # Same rollover protection as End Day: keep completed work
+                # attached to the board's original Momentum date.
+                closing_date = str(state.get("date") or today_key())
                 state["day_closed"] = True
                 state["last_closeout"] = {
                     "status": "BONUS COMPLETE",
-                    "closed_at": datetime.now().isoformat(timespec="seconds"),
+                    "closed_at": datetime.now(APP_TIMEZONE).isoformat(timespec="seconds"),
                     "tomorrow_focus": analyze_history().get("weakest_habit", "Reading"),
                 }
                 save_state(state)
-                save_progress_to_history(state)
+                save_progress_to_history(state, date_key=closing_date)
                 add_chat(
                     state,
                     "Companion",
@@ -4447,7 +4460,7 @@ def render_header(state, animate_mission=False):
                 )
                 queue_companion_voice(
                     state, spoken_companion_line("bonus_complete"),
-                    f"bonus_complete_{today_key()}", autoplay=True
+                    f"bonus_complete_{closing_date}", autoplay=True
                 )
                 st.success("🌙 See you tomorrow.")
                 st.rerun()
@@ -6363,15 +6376,18 @@ def render_end_day(state):
     )
     button_label = "🌙 See You Tomorrow" if all_bonus_complete else "Begin Tomorrow"
     if st.button(button_label, use_container_width=True, type="primary"):
+        # Seal the board under the date it was actually worked, even if this
+        # button is clicked after the 2:00 AM Momentum rollover.
+        closing_date = str(state.get("date") or today_key())
         quote = categorized_quote(state, review["quote_category"])
         state["day_closed"] = True
         state["last_closeout"] = {
             "status": review["status"],
-            "closed_at": datetime.now().isoformat(timespec="seconds"),
+            "closed_at": datetime.now(APP_TIMEZONE).isoformat(timespec="seconds"),
             "tomorrow_focus": review["tomorrow_task"],
         }
         save_state(state)
-        save_progress_to_history(state)
+        save_progress_to_history(state, date_key=closing_date)
         final_message = (
             f"{review['status'].title()}. {review['completed']}/{review['total']} tasks • "
             f"{review['xp']} XP. Tomorrow begins with {review['tomorrow_task']}."
@@ -6379,7 +6395,7 @@ def render_end_day(state):
         add_chat(state, "Companion", final_message)
         queue_companion_voice(
             state, spoken_companion_line("end_day", status=review["status"].title()),
-            f"closeout_{today_key()}_{review['status']}", autoplay=True
+            f"closeout_{closing_date}_{review['status']}", autoplay=True
         )
         st.success("Today is sealed. Tomorrow is ready.")
         render_companion_quote_card(quote)
