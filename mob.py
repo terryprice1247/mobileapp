@@ -3813,7 +3813,12 @@ def is_backfill_request(text):
 
 
 def update_history_backfill(date_key, task_updates):
-    """Merge task updates into one prior history record and recalculate its totals."""
+    """Merge task updates into one prior history record and recalculate its totals.
+
+    Backfills never touch today's live board. Existing historical metadata is
+    preserved where possible, while status/XP are recalculated from the merged
+    task data so Calendar, Alerts, Companion, and lifetime XP stay consistent.
+    """
     history = load_json(HISTORY_FILE, {})
     existing = history.get(date_key, {})
     if not isinstance(existing, dict):
@@ -3831,11 +3836,13 @@ def update_history_backfill(date_key, task_updates):
 
     for canonical, minutes in task_updates:
         task = get_task(canonical)
+        if not task:
+            continue
         existing_tasks[canonical] = {
             "text": canonical,
             "display": task["display"],
             "done": True,
-            "duration_minutes": minutes,
+            "duration_minutes": normalize_task_duration(canonical, minutes),
             "xp": task_xp(canonical, minutes),
         }
 
@@ -3843,6 +3850,9 @@ def update_history_backfill(date_key, task_updates):
     missed = []
     completed = 0
     xp = 0
+    energy = str(existing.get("energy", "Normal") or "Normal").title()
+    minimums_met = 0
+    bonus_upgrades = []
 
     for task in DAILY_TASKS:
         canonical = task["canonical"]
@@ -3859,6 +3869,18 @@ def update_history_backfill(date_key, task_updates):
         else:
             missed.append(canonical)
 
+        if minutes >= minimum_required_minutes(canonical, energy):
+            minimums_met += 1
+
+        tier = task_tier(canonical, minutes)
+        if tier in {"growth", "mastery"}:
+            bonus_upgrades.append({
+                "text": canonical,
+                "display": task["display"],
+                "tier": tier,
+                "duration_minutes": minutes,
+            })
+
         tasks_payload.append({
             "text": canonical,
             "display": task["display"],
@@ -3867,23 +3889,67 @@ def update_history_backfill(date_key, task_updates):
             "xp": earned,
         })
 
-    history[date_key] = {
+    finished_all = completed == len(DAILY_TASKS)
+    minimums_complete = minimums_met == len(DAILY_TASKS)
+
+    updated = dict(existing)
+    updated.update({
         "date": date_key,
-        "saved_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+        "saved_at": datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d %I:%M %p"),
         "location": existing.get("location", "Away"),
-        "energy": existing.get("energy", "Normal"),
+        "energy": energy,
         "completed": completed,
         "total": len(DAILY_TASKS),
-        "finished_all": completed == len(DAILY_TASKS),
+        "finished_all": finished_all,
         "missed_tasks": missed,
         "tasks": tasks_payload,
         "xp_earned": xp,
         "xp_possible": max_daily_xp(),
         "day_closed": bool(existing.get("day_closed", False)),
+        "bonus_upgrades": bonus_upgrades,
+        "bonus_completed": bool(minimums_complete and bonus_upgrades),
+        "calendar_status": (
+            "complete" if minimums_complete
+            else ("partial" if completed > 0 else "empty")
+        ),
         "backfilled": True,
-    }
+    })
+    history[date_key] = updated
     save_json(HISTORY_FILE, history)
     return history[date_key]
+
+
+def calendar_minimum_backfill_allowed(date_key):
+    """Calendar correction is intentionally limited to yesterday only."""
+    yesterday = momentum_now().date() - timedelta(days=1)
+    return str(date_key) == yesterday.strftime("%Y-%m-%d")
+
+
+def calendar_backfill_minimum(date_key, canonical):
+    """Log exactly one minimum tier into yesterday without touching today's board."""
+    if not calendar_minimum_backfill_allowed(date_key):
+        return False, "Only yesterday can be corrected from the Calendar."
+
+    task = get_task(canonical)
+    if not task:
+        return False, "That task could not be found."
+
+    record = calendar_record_for_date(date_key, {})
+    for item in record.get("tasks", []) if isinstance(record, dict) else []:
+        item_name = normalize_history_task_name(
+            item.get("text") or item.get("display", "")
+        )
+        if item_name == canonical:
+            current = normalize_task_duration(
+                canonical, item.get("duration_minutes", 0)
+            )
+            if current > 0:
+                return False, f"{task['display']} is already logged for yesterday."
+            break
+
+    minimum = min(duration_options(canonical))
+    update_history_backfill(date_key, [(canonical, minimum)])
+    return True, f"✓ {task['display']} added to yesterday at the {minimum}m minimum."
 
 
 
@@ -5946,14 +6012,21 @@ def render_calendar_detail(date_key, state):
     }
     symbol = calendar_achievement_symbol(record)
     try:
-        display_date = datetime.strptime(date_key, "%Y-%m-%d").strftime("%A, %B %-d")
+        selected_date = datetime.strptime(date_key, "%Y-%m-%d").date()
+        display_date = selected_date.strftime("%A, %B %d").replace(" 0", " ")
     except ValueError:
+        selected_date = None
         display_date = date_key
 
     rows = []
+    task_minutes = {}
     for task in record.get("tasks", []):
+        canonical = normalize_history_task_name(
+            task.get("text") or task.get("display", "")
+        )
         display = html.escape(str(task.get("display") or task.get("text") or "Task"))
         minutes = int(task.get("duration_minutes", 0) or 0)
+        task_minutes[canonical] = minutes
         css_class = "done" if minutes > 0 else "missed"
         marker = "✓" if minutes > 0 else "—"
         rows.append(
@@ -5975,6 +6048,48 @@ def render_calendar_detail(date_key, state):
         """,
         unsafe_allow_html=True,
     )
+
+    # Small correction layer, not a second Tasks screen. Yesterday only, and
+    # only zero-minute tasks can receive the minimum valid tier.
+    if calendar_minimum_backfill_allowed(date_key):
+        missing = [
+            task for task in DAILY_TASKS
+            if int(task_minutes.get(task["canonical"], 0) or 0) <= 0
+        ]
+        if missing:
+            st.markdown(
+                "<div style='margin:10px 2px 5px;color:#8fa2bf;font-size:.69rem;font-weight:850;'>"
+                "FORGOT TO LOG YESTERDAY? &nbsp; Minimum only.</div>",
+                unsafe_allow_html=True,
+            )
+            for task in missing:
+                canonical = task["canonical"]
+                minimum = min(duration_options(canonical))
+                left, right = st.columns([3.2, 1.45])
+                with left:
+                    st.markdown(
+                        f"<div style='padding:9px 2px;color:#dbe7ff;font-size:.79rem;font-weight:800;'>"
+                        f"{html.escape(task['display'])} <span style='color:#71839f;'>• {minimum}m</span></div>",
+                        unsafe_allow_html=True,
+                    )
+                with right:
+                    if st.button(
+                        "+ Log min",
+                        key=f"calendar_backfill_min_{date_key}_{canonical}",
+                        use_container_width=True,
+                    ):
+                        ok, message = calendar_backfill_minimum(date_key, canonical)
+                        if ok:
+                            st.session_state["calendar_backfill_flash"] = message
+                            st.rerun()
+                        else:
+                            st.warning(message)
+        else:
+            st.caption("Yesterday is fully logged.")
+
+    flash = st.session_state.pop("calendar_backfill_flash", "")
+    if flash:
+        st.success(flash)
 
 
 def render_calendar(state):
