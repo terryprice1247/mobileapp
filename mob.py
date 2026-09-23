@@ -6603,6 +6603,13 @@ def render_end_day(state):
 
 
 def set_page(page_name):
+    current_page = st.session_state.get("mobile_page", "Home")
+
+    # A Push belongs only to the current Home visit. Once the user leaves
+    # Home, discard it so returning Home cannot replay stale audio.
+    if current_page == "Home" and page_name != "Home":
+        st.session_state.pop("active_push_id", None)
+
     st.session_state["mobile_page"] = page_name
 
 
