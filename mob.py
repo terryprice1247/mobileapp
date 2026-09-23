@@ -55,6 +55,17 @@ WORKOUT_LOG_FILE = seed_persistent_file("workout_training_history.json", [])
 # Quotes are app content, not changing user progress, so they stay in GitHub.
 QUOTES_FILE = APP_DIR / "momentum_quotes.json"
 
+# Push audio clips are static app content stored in GitHub.
+PUSH_AUDIO_DIR = APP_DIR / "AUDIO"
+PUSH_LIBRARY = [
+    {
+        "id": "test_push",
+        "title": "TEST PUSH",
+        "subtitle": "Sometimes you don\'t need another plan. You need movement.",
+        "file": "sample.mp3",
+    },
+]
+
 # ElevenLabs secrets belong in Render Environment Variables or .streamlit/secrets.toml.
 # Never commit the API key to GitHub.
 def runtime_secret(name, fallback=""):
@@ -4094,6 +4105,51 @@ def bonus_round_permission_response(state):
     return f"{direct}\n\n{growth}"
 
 
+def is_push_request(text):
+    """Detect an explicit request for a prerecorded Momentum Push."""
+    low = str(text or "").lower().strip()
+    phrases = [
+        "push", "i need a push", "give me a push", "play a push",
+        "need a push", "another push", "play push",
+    ]
+    return low in phrases or any(phrase in low for phrase in ["give me a push", "i need a push", "play a push"])
+
+
+def choose_push():
+    """Choose a Push entry. Version one has a single test clip."""
+    return random.choice(PUSH_LIBRARY) if PUSH_LIBRARY else None
+
+
+def render_active_push():
+    """Render the currently requested prerecorded Push, if one is active."""
+    push_id = st.session_state.get("active_push_id")
+    if not push_id:
+        return
+
+    push = next((item for item in PUSH_LIBRARY if item.get("id") == push_id), None)
+    if not push:
+        st.session_state.pop("active_push_id", None)
+        return
+
+    title = html.escape(str(push.get("title", "PUSH")))
+    subtitle = html.escape(str(push.get("subtitle", "")))
+    st.markdown(
+        f"""
+        <div class='companionQuoteCard'>
+          <div class='companionQuoteHead'>✦ PUSH</div>
+          <div class='companionQuoteText'><b>{title}</b><br>{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    audio_path = PUSH_AUDIO_DIR / str(push.get("file", ""))
+    if audio_path.is_file():
+        st.audio(str(audio_path), format="audio/mpeg")
+    else:
+        st.error(f"Push audio not found: AUDIO/{push.get('file', '')}")
+
+
 def is_reengagement_request(text):
     """Detect natural resistance phrases that should trigger the Companion."""
     low = str(text or "").lower().strip()
@@ -4120,6 +4176,13 @@ def handle_command(text, state):
         return "Chat cleared. Fresh board."
 
     core = get_companion_core(state)
+
+    if is_push_request(cleaned):
+        push = choose_push()
+        if not push:
+            return "No Push audio is configured yet."
+        st.session_state["active_push_id"] = push["id"]
+        return f"✦ Push ready: {push['title']}"
 
     if is_backfill_request(cleaned):
         return backfill_from_chat(cleaned)
@@ -4729,11 +4792,12 @@ def render_home(state):
     # The old split opening/closing homeShell tags produced the empty purple strip.
     render_chat_log(state)
     auto_scroll_chat()
+    render_active_push()
 
     with st.form("chat_form", clear_on_submit=True):
         user_msg = st.text_input(
             "Chat",
-            placeholder="Try: next • goal • why • log Spanish 20",
+            placeholder="Try: next • goal • push • log Spanish 20",
             label_visibility="collapsed"
         )
         sent = st.form_submit_button("➤ Send", use_container_width=True, type="primary")
