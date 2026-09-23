@@ -55,16 +55,30 @@ WORKOUT_LOG_FILE = seed_persistent_file("workout_training_history.json", [])
 # Quotes are app content, not changing user progress, so they stay in GitHub.
 QUOTES_FILE = APP_DIR / "momentum_quotes.json"
 
-# Push audio clips are static app content stored in GitHub.
+# Push audio clips and their descriptions are static app content stored in GitHub.
 PUSH_AUDIO_DIR = APP_DIR / "AUDIO"
-PUSH_LIBRARY = [
-    {
-        "id": "test_push",
-        "title": "TEST PUSH",
-        "subtitle": "Sometimes you don\'t need another plan. You need movement.",
-        "file": "sample.mp3",
-    },
-]
+PUSH_LIBRARY_FILE = APP_DIR / "momentum_pushes.json"
+
+
+def load_push_library():
+    """Load Push clips from momentum_pushes.json without touching user progress data."""
+    raw = load_json(PUSH_LIBRARY_FILE, [])
+    if not isinstance(raw, list):
+        return []
+
+    pushes = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        filename = str(item.get("file", "")).strip()
+        if not filename:
+            continue
+        pushes.append({
+            "id": str(item.get("id") or f"push_{index + 1}"),
+            "file": filename,
+            "description": str(item.get("description", "")).strip(),
+        })
+    return pushes
 
 # ElevenLabs secrets belong in Render Environment Variables or .streamlit/secrets.toml.
 # Never commit the API key to GitHub.
@@ -4116,8 +4130,9 @@ def is_push_request(text):
 
 
 def choose_push():
-    """Choose a Push entry. Version one has a single test clip."""
-    return random.choice(PUSH_LIBRARY) if PUSH_LIBRARY else None
+    """Choose a Push entry from momentum_pushes.json."""
+    library = load_push_library()
+    return random.choice(library) if library else None
 
 
 def render_active_push():
@@ -4126,18 +4141,22 @@ def render_active_push():
     if not push_id:
         return
 
-    push = next((item for item in PUSH_LIBRARY if item.get("id") == push_id), None)
+    library = load_push_library()
+    push = next((item for item in library if item.get("id") == push_id), None)
     if not push:
         st.session_state.pop("active_push_id", None)
         return
 
-    title = html.escape(str(push.get("title", "PUSH")))
-    subtitle = html.escape(str(push.get("subtitle", "")))
+    description = html.escape(str(push.get("description", "")))
+    description_html = (
+        f"<div class='companionQuoteText'>{description}</div>"
+        if description else ""
+    )
     st.markdown(
         f"""
         <div class='companionQuoteCard'>
           <div class='companionQuoteHead'>✦ PUSH</div>
-          <div class='companionQuoteText'><b>{title}</b><br>{subtitle}</div>
+          {description_html}
         </div>
         """,
         unsafe_allow_html=True,
@@ -4145,7 +4164,8 @@ def render_active_push():
 
     audio_path = PUSH_AUDIO_DIR / str(push.get("file", ""))
     if audio_path.is_file():
-        st.audio(str(audio_path), format="audio/mpeg")
+        # Browsers may still block autoplay; the player remains available if they do.
+        st.audio(str(audio_path), format="audio/mpeg", autoplay=True)
     else:
         st.error(f"Push audio not found: AUDIO/{push.get('file', '')}")
 
@@ -4182,7 +4202,7 @@ def handle_command(text, state):
         if not push:
             return "No Push audio is configured yet."
         st.session_state["active_push_id"] = push["id"]
-        return f"✦ Push ready: {push['title']}"
+        return "✦ Push ready."
 
     if is_backfill_request(cleaned):
         return backfill_from_chat(cleaned)
