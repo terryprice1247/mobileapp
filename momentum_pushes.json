@@ -1,7 +1,57 @@
 [
   {
-    "id": "sample",
-    "file": "sample.mp3",
-    "description": "Sometimes you don't need another plan. You need movement."
+    "id": "dont_negotiate",
+    "file": "#discipline #motivation #davidgoggins #davidgogginsmotivation #mental #hardwork #grind.mp3",
+    "description": "Your mind will offer you an exit when the work gets uncomfortable. Don't negotiate with it; keep moving until discomfort stops making the decisions."
+  },
+  {
+    "id": "the_lion",
+    "file": "Christopher Walken - The Lion.mp3",
+    "description": "Stop living like you need permission to take up space. Know what you are capable of, carry yourself with conviction, and move like you belong in the arena."
+  },
+  {
+    "id": "going_to_heaven",
+    "file": "David Goggins On Going To Heaven.mp3",
+    "description": "Don't reach the end carrying a list of abilities you never tested. Use what you were given while you still have the chance to find out who you could become."
+  },
+  {
+    "id": "kobe_ethics",
+    "file": "Gotta love Kobe ethics.mp3",
+    "description": "Greatness is built in the hours nobody applauds. The edge comes from choosing the work consistently enough that preparation becomes part of who you are."
+  },
+  {
+    "id": "price_of_dreams",
+    "file": "How much did they pay you to give up on your dreams_ #motivation #wiseadvise #mindset #lifeadvice.mp3",
+    "description": "Be careful what you accept in exchange for the life you actually wanted. Comfort can become expensive when the price is abandoning your own ambitions."
+  },
+  {
+    "id": "thats_dangerous",
+    "file": "Katt Williams - That's Dangerous 💯 #awakensecrets86 #shorts.mp3",
+    "description": "There is power in becoming harder to fool, pressure, or steer away from yourself. Think for yourself and protect the part of you that knows when something isn't right."
+  },
+  {
+    "id": "tough_guys",
+    "file": "Mike Tyson talks about Tough Guys 💯.mp3",
+    "description": "Real strength doesn't need a performance. Stay composed, respect what consequences can do, and don't confuse loudness with power."
+  },
+  {
+    "id": "brutal_truth",
+    "file": "The Brutal Truth That Will Change Your Life.mp3",
+    "description": "Nobody is coming to build your life for you. What changes next depends on what you repeatedly choose to do when excuses would be easier."
+  },
+  {
+    "id": "coldest_advice",
+    "file": "The Coldest Advice ever given to MAN 👨 .mp3",
+    "description": "Build a life that can stand without constant approval, rescue, or validation. The stronger your foundation becomes, the less desperation gets to choose for you."
+  },
+  {
+    "id": "what_should_motivate_you",
+    "file": "The Truth About What Should Motivate You.mp3",
+    "description": "Don't wait for applause to make the work meaningful. Let your own standard, your future, and the person you're becoming be enough reason to move."
+  },
+  {
+    "id": "hardest_truth_about_life",
+    "file": "“The Hardest Truth About Life _ David Goggins Motivation 💯”.mp3",
+    "description": "Time keeps moving whether you use it or not. Stop waiting for the perfect version of yourself to arrive and start becoming that person through what you do today."
   }
 ]
