@@ -4125,8 +4125,16 @@ def is_push_request(text):
     phrases = [
         "push", "i need a push", "give me a push", "play a push",
         "need a push", "another push", "play push",
+        "audio clip", "an audio clip", "play an audio", "play audio",
+        "play an audio clip", "give me an audio clip", "give me audio",
+        "i need an audio clip", "i need audio", "another audio clip",
     ]
-    return low in phrases or any(phrase in low for phrase in ["give me a push", "i need a push", "play a push"])
+    natural_phrases = [
+        "give me a push", "i need a push", "play a push",
+        "audio clip", "play an audio", "play audio", "give me audio",
+        "i need audio", "another audio clip",
+    ]
+    return low in phrases or any(phrase in low for phrase in natural_phrases)
 
 
 def choose_push():
@@ -4817,7 +4825,7 @@ def render_home(state):
     with st.form("chat_form", clear_on_submit=True):
         user_msg = st.text_input(
             "Chat",
-            placeholder="Try: next • goal • push • log Spanish 20",
+            placeholder="Try: next • goal • push • audio clip • log Spanish 20",
             label_visibility="collapsed"
         )
         sent = st.form_submit_button("➤ Send", use_container_width=True, type="primary")
