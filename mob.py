@@ -4138,9 +4138,30 @@ def is_push_request(text):
 
 
 def choose_push():
-    """Choose a Push entry from momentum_pushes.json."""
+    """Choose a Push while avoiding the last three clips from this browser session."""
     library = load_push_library()
-    return random.choice(library) if library else None
+    if not library:
+        return None
+
+    # Keep this temporary: it only exists for the current Streamlit/browser session.
+    # Do not write Push listening history into Momentum's persistent progress files.
+    recent_ids = list(st.session_state.get("recent_push_ids", []))
+    valid_ids = {str(item.get("id")) for item in library}
+    recent_ids = [push_id for push_id in recent_ids if push_id in valid_ids][-3:]
+
+    eligible = [item for item in library if str(item.get("id")) not in recent_ids]
+
+    # If the library is very small, gracefully fall back instead of failing.
+    # With the current 11-clip library, there will normally be 8 eligible choices.
+    if not eligible:
+        eligible = library
+
+    chosen = random.choice(eligible)
+    chosen_id = str(chosen.get("id"))
+
+    recent_ids.append(chosen_id)
+    st.session_state["recent_push_ids"] = recent_ids[-3:]
+    return chosen
 
 
 def render_active_push():
